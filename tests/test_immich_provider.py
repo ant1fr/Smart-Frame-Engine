@@ -40,10 +40,21 @@ class Cycle(random.Random):
 
 
 class Env:
-    def __init__(self, tmp_path: Path, fakes: dict[str, FakeImmich], **immich: Any) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        fakes: dict[str, FakeImmich],
+        quality: dict[str, Any] | None = None,
+        **immich: Any,
+    ) -> None:
         accounts = {n: {"url": f.base, "api_key": f.key} for n, f in fakes.items()}
         self.store = ConfigStore(
-            tmp_path / "config.json", {"immich": {"accounts": accounts, **immich}}
+            tmp_path / "config.json",
+            {
+                "immich": {"accounts": accounts, **immich},
+                # The quality gate has its own tests (test_immich_quality.py).
+                "quality": {"enabled": False} if quality is None else quality,
+            },
         )
         self.gateway = ImmichGateway(self.store, URLPolicy())
         self.history = HistoryStore(tmp_path / "history.json")

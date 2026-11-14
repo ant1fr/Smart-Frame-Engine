@@ -98,7 +98,7 @@ class DisplayService:
             regions=asset.regions,
             push=push,
         )
-        await self._history.record(asset.history_key, asset.source)
+        await self._history.record(asset.history_key, asset.source, taken_at=asset.taken_at)
         return result
 
     async def push_current(self) -> DeliveryOutcome:

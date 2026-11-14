@@ -82,7 +82,9 @@ curl -X POST .../api/display/immich -H 'Content-Type: application/json' -d '{"mo
 | `always_include` | Names merged into every selection (e.g. a child without an HA account). Defaults to `immich.always_include`; send `[]` to switch it off |
 | `album_name` / `album_id` | Restrict to an album (names are case-insensitive) |
 | `accounts` | Limit to some accounts |
-| `fit`, `push_to_fraimic`, `ignore_history` | Fit override, push to the frame (default true), allow recently shown photos |
+| `fit`, `push_to_fraimic` | Fit override, push to the frame (default true) |
+| `ignore_history` | Allow photos shown within `anti_repeat_days` or taken close to one |
+| `skip_quality_gate` | Skip the suitability check (default: skipped in `album` mode, checked otherwise) |
 
 Unset filters fall back to the `immich` section of the settings. All modes share one
 query path, so persons, albums and favorites combine freely.
@@ -111,6 +113,27 @@ IDs or names that exist in a given account.
 (`immich.anti_repeat_days`, shared across accounts), then one is picked at random. The
 original is downloaded at full resolution (HEIC works); RAW files and files larger than
 `MAX_UPLOAD_MB` use Immich's converted JPEG (`fullsize`, then `preview`).
+
+**Quality gate.** Rather than force an unsuitable image onto a 6-color panel, photos are
+vetted *before* the full-size download, using a ~250 px thumbnail and metadata (no pixels
+are ever modified; about 10 ms of NumPy per candidate, and normally one candidate is
+enough). Rejected: blank/near-black frames, tiny images (short side below
+`quality.min_dimension`, default 600 px), screenshots and graphics (no camera EXIF *and* a
+large bright flat area or a tall phone-screen shape) and document scans. Kept on purpose:
+black-and-white portraits, night shots, scanned family photos and low-contrast snow
+scenes. Thresholds come from a calibration on ~400 real photos (4.3% rejected) and live in
+the `quality` settings section. If none of `quality.candidates_checked` (default 8)
+passes, the rules relax in four steps (halve the size limit, drop the phone-shape and
+document rules, keep only blank and flat-color screenshots, keep only blank) so a request
+never dead-ends; the outcome is reported in the image details under `suitability`
+(`level`, `checked`, `rejected`). A thumbnail that cannot be read never blocks a photo.
+
+**Burst cooldown.** The history stores each photo's capture time. After a photo was
+shown, others taken within `immich.burst_cooldown_hours` (default 2) of it are skipped for
+`immich.burst_cooldown_days` (default 3), so rapid-fire shots of one moment are not shown
+back-to-back while other photos of the same trip can still appear later (`0` for either
+setting disables it; `ignore_history` bypasses it). The exact-repeat memory stays
+`anti_repeat_days` (default 30).
 
 **Face-aware crop.** Face boxes of the requested people drive `smart_crop` (all faces are
 the fallback), padded by 25% for hair and shoulders. When two faces are too far apart for

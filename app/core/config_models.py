@@ -140,6 +140,20 @@ class ImmichConfig(_Section):
     anti_repeat_days: int = Field(
         default=30, ge=0, le=3650, description="Do not show the same photo again within N days"
     )
+    burst_cooldown_hours: float = Field(
+        default=2.0,
+        ge=0,
+        le=168,
+        description="After a photo was shown, skip photos taken within this many hours of it "
+        "(rapid-fire shots of one moment); 0 = off",
+    )
+    burst_cooldown_days: int = Field(
+        default=3,
+        ge=0,
+        le=365,
+        description="How long a shown photo blocks others from its burst (days); 0 = off. "
+        "Shorter than anti_repeat_days so other photos of the same trip can appear later",
+    )
     people_cache_ttl_s: int = Field(
         default=3600, ge=0, le=604_800, description="How long the people list is cached (0 = off)"
     )
@@ -325,6 +339,54 @@ class EinkConfig(_Section):
         return self.model_copy(update=PHOTO_PROFILE)
 
 
+class QualityConfig(_Section):
+    """Photo suitability gate: skips images a 6-color eInk panel renders badly.
+
+    Thresholds were calibrated on ~400 real photos (thumbnails): they catch blank frames,
+    tiny images, screenshots/graphics and document scans while keeping black-and-white
+    portraits and night shots. If a whole batch of candidates fails, the gate relaxes
+    step by step instead of finding nothing (see ``app.processor.quality``).
+    """
+
+    enabled: bool = Field(default=True, description="Check photos before downloading them")
+    candidates_checked: int = Field(
+        default=8, ge=1, le=50, description="Max candidates inspected per request"
+    )
+    min_dimension: int = Field(
+        default=600, ge=0, le=4000, description="Reject images whose short side is below this (px)"
+    )
+    blank_luma_mean: float = Field(
+        default=15.0, ge=0, le=255, description="Reject near-black frames (mean luma below)"
+    )
+    blank_luma_std: float = Field(
+        default=8.0, ge=0, le=128, description="Reject flat frames (luma std-dev below)"
+    )
+    screenshot_flat_share: float = Field(
+        default=35.0,
+        ge=1,
+        le=100,
+        description="No camera EXIF and this % of pixels one bright color",
+    )
+    screenshot_flat_luma: float = Field(
+        default=128.0, ge=0, le=255, description="Luma above which the flat color counts as bright"
+    )
+    screenshot_aspect: float = Field(
+        default=1.9,
+        ge=1,
+        le=10,
+        description="No camera EXIF and aspect at least this (phone screen)",
+    )
+    screenshot_max_dimension: int = Field(
+        default=1300, ge=0, le=10000, description="... and short side at most this (px)"
+    )
+    document_colorfulness: float = Field(
+        default=15.0, ge=0, le=255, description="No camera EXIF, colorfulness below this ..."
+    )
+    document_white_share: float = Field(
+        default=15.0, ge=0, le=100, description="... and at least this % of near-white pixels"
+    )
+
+
 class SourceRule(BaseModel):
     """The last source request, replayed by ``/api/refresh`` and the scheduler."""
 
@@ -390,6 +452,7 @@ class RuntimeConfig(BaseModel):
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     eink: EinkConfig = Field(default_factory=EinkConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    quality: QualityConfig = Field(default_factory=QualityConfig)
 
     @property
     def frame_size(self) -> tuple[int, int]:

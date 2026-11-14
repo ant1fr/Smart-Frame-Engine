@@ -98,6 +98,7 @@ class FakeImmich:
         people: list[tuple[str, str]] = (),  # type: ignore[assignment]
         faces: list[dict[str, Any]] | None = None,
         original: bytes | int | None = None,
+        thumbnail: bytes | int | None = None,
         **overrides: Any,
     ) -> dict[str, Any]:
         overrides.setdefault("people", [{"id": pid, "name": name} for pid, name in people])
@@ -107,6 +108,8 @@ class FakeImmich:
         self.files[(asset_id, "original")] = jpeg() if original is None else original
         self.files[(asset_id, "fullsize")] = jpeg((1440, 1080))
         self.files[(asset_id, "preview")] = jpeg((1440, 1080))
+        if thumbnail is not None:  # without one the server answers 404 for the thumbnail
+            self.files[(asset_id, "thumbnail")] = thumbnail
         return data
 
     def add_album(self, album_id: str, name: str, asset_ids: list[str]) -> None:

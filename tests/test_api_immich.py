@@ -277,3 +277,53 @@ def test_multi_account_configuration_over_the_api(make_client: ClientFactory) ->
         only = show(client, accounts=["partner"], push_to_fraimic=False, ignore_history=True)
     assert picked <= {"h1", "p1", "p2"}
     assert only.json()["image"]["details"]["account"] == "partner"
+
+
+# --- quality gate and burst cooldown ------------------------------------------------------------
+def test_display_records_taken_at_and_blocks_the_same_moment(make_client: ClientFactory) -> None:
+    from datetime import UTC, datetime
+
+    fake = family()
+    # Same capture time as a1 (shown below): a rapid-fire shot of the same moment.
+    fake.add_asset("a1b", people=[("p1", "Alice")], checksum="sum-a1b")
+    client = immich_client(make_client)
+    with servers(fake, frame=False):
+        assert show(client, persons=["Alice"], push_to_fraimic=False).status_code == 200
+        history = client.app.state.history_store  # type: ignore[attr-defined]
+        assert history.entries()[0].taken_at == datetime(2024, 7, 14, 10, 22, 11, tzinfo=UTC)
+
+        blocked = show(client, persons=["Alice"], push_to_fraimic=False)
+        assert blocked.status_code == 404 and "taken within 2 h" in blocked.json()["detail"]
+        again = show(client, persons=["Alice"], ignore_history=True, push_to_fraimic=False)
+        assert again.status_code == 200
+
+
+def test_quality_gate_over_the_api(make_client: ClientFactory) -> None:
+    from tests.test_immich_quality import add_good, ui_screen
+
+    fake = FakeImmich()
+    fake.add_asset("shot", thumbnail=ui_screen(), width=1080, height=2400)
+    add_good(fake, "good")
+    client = immich_client(make_client)
+    with servers(fake, frame=False):
+        body = show(client, push_to_fraimic=False, ignore_history=True).json()
+        suitability = body["image"]["details"]["suitability"]
+        assert suitability["level"] == 0 and suitability["checked"] in {1, 2}
+        if suitability["checked"] == 2:
+            assert body["image"]["details"]["asset_id"] == "good"
+
+        skipped = show(client, skip_quality_gate=True, push_to_fraimic=False, ignore_history=True)
+        assert "suitability" not in skipped.json()["image"]["details"]
+
+
+def test_quality_settings_over_the_api(make_client: ClientFactory) -> None:
+    client = make_client()
+    quality = client.get("/api/config").json()["config"]["quality"]
+    assert quality["enabled"] is True and quality["min_dimension"] == 600
+    assert client.put("/api/config", json={"quality": {"min_dimension": 800}}).status_code == 200
+    assert client.get("/api/config").json()["config"]["quality"]["min_dimension"] == 800
+    assert client.put("/api/config", json={"quality": {"min_dimension": -1}}).status_code == 422
+    assert client.put("/api/config", json={"quality": {"nope": 1}}).status_code == 400
+    assert (
+        client.put("/api/config", json={"immich": {"burst_cooldown_hours": 0}}).status_code == 200
+    )
