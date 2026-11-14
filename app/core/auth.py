@@ -4,7 +4,8 @@ Rules when ``APP_API_KEY`` is set (no-op when it is empty):
 
 * ``POST``/``PUT``/``PATCH``/``DELETE`` on any route require the key.
 * ``/api/config`` and everything below it require the key for every method.
-* ``/api/current.jpg`` and ``/api/current.bin`` require the key only when
+* ``/api/current.jpg``, ``/api/current.bin`` and ``/api/current_dithered.png`` require
+  the key only when
   ``PUBLIC_IMAGE_ENDPOINTS=false``.
 * Everything else (UI, ``/docs``, ``/openapi.json``, ``/api/health``, ``GET /api/status``)
   stays public so the UI can load and prompt for the key.
@@ -28,7 +29,9 @@ API_KEY_QUERY_PARAM: Final = "api_key"
 
 MUTATING_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 PROTECTED_PREFIXES: Final = ("/api/config",)
-IMAGE_ENDPOINTS: Final = frozenset({"/api/current.jpg", "/api/current.bin"})
+IMAGE_ENDPOINTS: Final = frozenset(
+    {"/api/current.jpg", "/api/current.bin", "/api/current_dithered.png"}
+)
 
 #: OpenAPI-only security scheme so ``/docs`` offers an "Authorize" button. Enforcement
 #: is done by :class:`APIKeyMiddleware`, never by this dependency.

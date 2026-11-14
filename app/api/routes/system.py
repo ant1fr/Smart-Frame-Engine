@@ -9,7 +9,14 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app import __version__
-from app.api.deps import ConfigStoreDep, SettingsDep
+from app.api.deps import (
+    ConfigStoreDep,
+    CurrentImageStoreDep,
+    DeliveryServiceDep,
+    SettingsDep,
+)
+from app.services.current_image import CurrentImageMeta
+from app.services.delivery import FrameTelemetry, LastDelivery, PendingUpload
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -30,6 +37,15 @@ class FrameStatus(BaseModel):
     orientation: str
     frame_size: tuple[int, int] = Field(description="Composition size (width, height)")
     configured: bool = Field(description="Whether a frame host is configured")
+    telemetry: FrameTelemetry = Field(description="Last known frame state (no live query)")
+
+
+class DeliveryStatus(BaseModel):
+    """Upload queue state."""
+
+    pending: bool = Field(description="Whether an image is waiting for the frame")
+    pending_upload: PendingUpload | None = None
+    last_delivery: LastDelivery | None = None
 
 
 class SchedulerStatus(BaseModel):
@@ -55,6 +71,10 @@ class StatusResponse(BaseModel):
     auth_enabled: bool
     public_image_endpoints: bool
     frame: FrameStatus
+    delivery: DeliveryStatus
+    current_image: CurrentImageMeta | None = Field(
+        default=None, description="Metadata of the current image (null before the first one)"
+    )
     scheduler: SchedulerStatus
     services: ServiceConfigured
 
@@ -66,9 +86,16 @@ async def health() -> HealthResponse:
 
 
 @router.get("/status", response_model=StatusResponse, summary="System status")
-async def status(request: Request, settings: SettingsDep, store: ConfigStoreDep) -> StatusResponse:
-    """Overall system status and configuration summary (no secrets)."""
+async def status(
+    request: Request,
+    settings: SettingsDep,
+    store: ConfigStoreDep,
+    current: CurrentImageStoreDep,
+    delivery: DeliveryServiceDep,
+) -> StatusResponse:
+    """Overall system status, queue state and current image (no secrets, no network)."""
     config = store.config
+    snapshot = delivery.snapshot()
     started_at: float = request.app.state.started_at
     return StatusResponse(
         version=__version__,
@@ -82,7 +109,14 @@ async def status(request: Request, settings: SettingsDep, store: ConfigStoreDep)
             orientation=config.display.orientation,
             frame_size=config.frame_size,
             configured=bool(config.fraimic.base_url),
+            telemetry=snapshot.telemetry,
         ),
+        delivery=DeliveryStatus(
+            pending=snapshot.pending is not None,
+            pending_upload=snapshot.pending,
+            last_delivery=snapshot.last_delivery,
+        ),
+        current_image=current.meta,
         scheduler=SchedulerStatus(
             enabled=config.scheduler.enabled,
             interval_hours=config.scheduler.interval_hours,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,22 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make sure the developer's shell environment never leaks into tests."""
     for name in EnvSettings.model_fields:
         monkeypatch.delenv(name.upper(), raising=False)
+
+
+_LOCAL_HOSTS = {None, "localhost", "127.0.0.1", "::1", "testserver"}
+
+
+@pytest.fixture(autouse=True)
+def _no_external_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail fast instead of resolving real hostnames (tests must never hit the network)."""
+    real_getaddrinfo = socket.getaddrinfo
+
+    def guarded(host: Any, *args: Any, **kwargs: Any) -> Any:
+        if host not in _LOCAL_HOSTS:
+            raise socket.gaierror(f"External DNS lookups are disabled in tests ({host!r})")
+        return real_getaddrinfo(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", guarded)
 
 
 @pytest.fixture
