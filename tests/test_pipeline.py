@@ -201,3 +201,80 @@ def test_landscape_bin_is_byte_identical_to_official_rotate_fit() -> None:
     official_indices = ref.quantize_atkinson_indexed(_official_rotate_image(image, (255, 255, 255)))
     expected = ref.pack_el133uf1(ref.COLOR_CODES[official_indices]).tobytes()
     assert render(image, options).bin == expected
+
+
+# --- safe margin ---------------------------------------------------------------------------
+def _margin_options(margin: int, fit: str, background: str = "white") -> RenderOptions:
+    return RenderOptions.from_config(
+        config(
+            display={
+                "default_fit": fit,
+                "contain_background": background,
+                "safe_margin_px": margin,
+            },
+            eink=neutral_eink(),
+        )
+    )
+
+
+@pytest.mark.parametrize("fit", ["smart_crop", "contain"])
+def test_safe_margin_zero_is_the_unchanged_composition(fit: str) -> None:
+    rng = np.random.default_rng(31)
+    image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))
+    default = RenderOptions.from_config(config(display={"default_fit": fit}))
+    explicit = RenderOptions.from_config(config(display={"default_fit": fit, "safe_margin_px": 0}))
+    assert np.array_equal(np.asarray(compose(image, default)), np.asarray(compose(image, explicit)))
+
+
+@pytest.mark.parametrize(
+    ("fit", "background", "fill"),
+    [
+        ("smart_crop", "white", (255, 255, 255)),
+        ("smart_crop", "black", (0, 0, 0)),
+        ("contain", "black", (0, 0, 0)),
+    ],
+)
+def test_safe_margin_insets_the_picture_and_fills_the_rim(
+    fit: str, background: str, fill: tuple[int, int, int]
+) -> None:
+    margin = 40
+    image = Image.new("RGB", (1200, 1600), (200, 30, 30))
+    composed = np.asarray(compose(image, _margin_options(margin, fit, background)))
+    assert composed.shape == (1600, 1200, 3)
+    assert np.all(composed[:margin] == fill) and np.all(composed[-margin:] == fill)
+    assert np.all(composed[:, :margin] == fill) and np.all(composed[:, -margin:] == fill)
+    assert np.all(composed[margin + 20 : -margin - 20, margin + 20 : -margin - 20] != fill)
+
+
+def test_safe_margin_blur_background_fills_the_rim_with_the_photo() -> None:
+    rng = np.random.default_rng(32)
+    image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))
+    composed = np.asarray(compose(image, _margin_options(60, "smart_crop", "blur")))
+    assert composed.shape == (1600, 1200, 3)
+    assert composed[:60].std() > 1  # a blurred copy of the photo, not a flat fill
+
+
+def test_safe_margin_is_applied_in_viewing_orientation_and_survives_rotation() -> None:
+    options = RenderOptions.from_config(
+        config(
+            display={
+                "orientation": "landscape",
+                "safe_margin_px": 50,
+                "contain_background": "white",
+            },
+            eink=neutral_eink(),
+        )
+    )
+    result = render(Image.new("RGB", (1600, 1200), (255, 0, 0)), options)
+    assert result.composed.size == (1600, 1200)
+    assert np.all(result.indices[:50] == WHITE) and np.all(result.indices[:, :50] == WHITE)
+    assert result.indices[600, 800] == RED
+    portrait = decode_bin(result.bin, options.panel)
+    assert np.all(portrait[:50] == WHITE) and portrait[800, 600] == RED
+
+
+def test_safe_margin_validation() -> None:
+    with pytest.raises(ValueError):
+        config(display={"safe_margin_px": -1})
+    with pytest.raises(ValueError):
+        config(display={"safe_margin_px": 251})

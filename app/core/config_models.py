@@ -200,6 +200,13 @@ class DisplayConfig(_Section):
     contain_background: Literal["blur", "black", "white"] = Field(
         default="blur", description="Padding style used by the contain fit mode"
     )
+    safe_margin_px: int = Field(
+        default=0,
+        ge=0,
+        le=250,
+        description="Inset (pixels) kept clear on every side so subjects stay out of the "
+        "frame's mat/bezel; the margin is filled with the contain background style",
+    )
 
 
 class EinkConfig(_Section):

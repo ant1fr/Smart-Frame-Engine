@@ -76,6 +76,7 @@ class RenderOptions:
     fit: FitMode
     background: BackgroundStyle
     eink: EinkConfig
+    safe_margin_px: int = 0
 
     def __post_init__(self) -> None:
         native = (self.panel.width, self.panel.height)
@@ -85,6 +86,8 @@ class RenderOptions:
                 f"frame_size {self.frame_size} does not match panel {native} "
                 f"with rotation {self.rotation}"
             )
+        if not 0 <= self.safe_margin_px < min(self.frame_size) // 4:
+            raise ValueError("safe_margin_px must be between 0 and a quarter of the short side")
 
     @classmethod
     def from_config(cls, config: RuntimeConfig, *, fit: FitMode | None = None) -> RenderOptions:
@@ -99,6 +102,7 @@ class RenderOptions:
             fit=fit or config.display.default_fit,
             background=config.display.contain_background,
             eink=config.eink,
+            safe_margin_px=config.display.safe_margin_px,
         )
 
 
@@ -139,10 +143,17 @@ class RenderResult:
 def compose(
     image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
 ) -> Image.Image:
-    """Fit and enhance ``image`` into the frame, in viewing orientation."""
+    """Fit and enhance ``image`` into the frame, in viewing orientation.
+
+    The picture fills the frame minus ``safe_margin_px`` on every side; whatever is left
+    over (the margin, or the bars of the ``contain`` fit) is the background.
+    """
+    margin = options.safe_margin_px
+    area = (options.frame_size[0] - 2 * margin, options.frame_size[1] - 2 * margin)
     if options.fit == "smart_crop":
-        return enhance(smart_crop(image, options.frame_size, regions), options.eink)
-    picture = enhance(fit_inside(image, options.frame_size), options.eink)
+        picture = enhance(smart_crop(image, area, regions), options.eink)
+    else:
+        picture = enhance(fit_inside(image, area), options.eink)
     if picture.size == options.frame_size:
         return picture
     background = make_background(image, options.frame_size, options.background)
