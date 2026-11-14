@@ -63,6 +63,23 @@ class FocusRegion:
         bottom = min(max(max(y1, y2) / image_height, 0.0), 1.0)
         return cls(left, top, max(right - left, 1e-6), max(bottom - top, 1e-6))
 
+    @property
+    def area(self) -> float:
+        """Normalized area (fraction of the image)."""
+        return self.width * self.height
+
+    def padded(self, fraction: float) -> FocusRegion:
+        """Grow every side by ``fraction`` of the region's own size, clamped to the image.
+
+        Used for faces so hair, chin and shoulders are not cut at the crop edge.
+        """
+        if fraction < 0:
+            raise ValueError("Padding fraction must not be negative")
+        dx, dy = self.width * fraction, self.height * fraction
+        left, top = max(self.x - dx, 0.0), max(self.y - dy, 0.0)
+        right, bottom = min(self.x + self.width + dx, 1.0), min(self.y + self.height + dy, 1.0)
+        return FocusRegion(left, top, right - left, bottom - top)
+
 
 def _scaled_size(size: Size, ratio: float) -> Size:
     return max(1, round(size[0] * ratio)), max(1, round(size[1] * ratio))
@@ -80,12 +97,39 @@ def _place_window(lo: float, hi: float, window: int, total: int, anchor: float) 
     return round(min(max(start, 0.0), float(total - window)))
 
 
+def regions_that_fit(
+    regions: Sequence[FocusRegion], max_width: float, max_height: float
+) -> list[FocusRegion]:
+    """The largest-first subset of ``regions`` whose union fits a crop window.
+
+    ``max_width``/``max_height`` are the window size as fractions of the image (values
+    ``>= 1`` mean that axis is never cropped, so it never limits the selection). The
+    biggest region is always kept - even when it alone exceeds the window - and every
+    other region is added only if the union still fits. Two people on opposite edges of
+    a wide photo therefore yield one whole face instead of two sliced ones.
+    """
+    if not regions:
+        return []
+    ordered = sorted(regions, key=lambda region: region.area, reverse=True)
+    kept = [ordered[0]]
+    x1, y1 = ordered[0].x, ordered[0].y
+    x2, y2 = x1 + ordered[0].width, y1 + ordered[0].height
+    for region in ordered[1:]:
+        nx1, ny1 = min(x1, region.x), min(y1, region.y)
+        nx2, ny2 = max(x2, region.x + region.width), max(y2, region.y + region.height)
+        if nx2 - nx1 <= max_width + 1e-9 and ny2 - ny1 <= max_height + 1e-9:
+            kept.append(region)
+            x1, y1, x2, y2 = nx1, ny1, nx2, ny2
+    return kept
+
+
 def smart_crop(image: Image.Image, size: Size, regions: Sequence[FocusRegion] = ()) -> Image.Image:
     """Scale to fill ``size`` and crop the overflow, keeping focus regions in frame.
 
     Without regions this is a centered crop identical to the official ``crop`` fit.
-    With regions, the crop window is moved along the overflowing axis so the union of
-    the regions is centered horizontally, or placed at 40% of the height vertically.
+    With regions, the ones that fit the crop window together (see
+    :func:`regions_that_fit`) decide where it goes: it is moved along the overflowing
+    axis so their union is centered horizontally, or placed at 40% of the height.
     """
     target_w, target_h = size
     ratio = max(target_w / image.width, target_h / image.height)
@@ -94,6 +138,7 @@ def smart_crop(image: Image.Image, size: Size, regions: Sequence[FocusRegion] = 
 
     left = (resized_w - target_w) // 2
     top = (resized_h - target_h) // 2
+    regions = regions_that_fit(regions, target_w / resized_w, target_h / resized_h)
     if regions:
         x1 = min(r.x for r in regions) * resized_w
         x2 = max(r.x + r.width for r in regions) * resized_w
