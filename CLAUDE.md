@@ -33,17 +33,17 @@ Implement two providers initially:
   - `smart_crop`: Intelligent crop centered on face bounding boxes detected by Immich, fitted to target frame dimensions (`FRAME_WIDTH`, `FRAME_HEIGHT`, `ORIENTATION=landscape|portrait`).
   - `contain`: Full image display with adaptive padding or blurred background (ideal for movie/TV posters).
 - **eInk Optimization:** Configurable contrast, saturation, and sharpness adjustments.
-- **Fraimic Binary Encoding:** Implement the exact `.bin` binary format and Floyd-Steinberg dithering on the official Fraimic color palette, strictly following the reference documentation and official converter code located in `/fraimic-docs` (specifically `/fraimic-docs/fraimic_bin_converter`).
-- **Cache:** Save the latest processed image in `/data/cache/` in two formats: `current.jpg` (for the web UI and Home Assistant) and `current.bin` (for Fraimic).
+- **Fraimic Binary Encoding:** Implement the exact `.bin` binary format and error-diffusion dithering (Atkinson by default, as in the official converter, or Floyd-Steinberg) with the official tuned color metric on the official Fraimic color palette, strictly following the reference documentation and official converter code located in `/fraimic-docs` (specifically `/fraimic-docs/fraimic_bin_converter`).
+- **Cache:** Save the latest processed image in `/data/cache/`: `current.jpg` (clean composition for the web UI and Home Assistant), `current_dithered.png` (exact 6-color preview), `current.bin` (for Fraimic) and `current.json` (metadata, written last). The deep-sleep upload queue lives in `/data/queue/` (`pending.bin` + `pending.json`).
 
 ### 3. Fraimic Communication & Power Management (`clients/fraimic.py`)
 Support two configurable power modes via the UI and `.env` (`FRAIMIC_POWER_MODE`):
 - **`continuous` mode (Mains-powered / Always-On):**
-  - Frame is always reachable. Every newly generated image is pushed immediately (`POST /api/upload`).
+  - Frame is always reachable. Every newly generated image is pushed immediately (`POST /api/image` on the frame, raw `.bin` as `application/octet-stream`).
 - **`deepsleep` mode (Battery-powered / Power-saving):**
   - Frame turns off Wi-Fi during deep sleep and wakes up periodically or on button press.
   - When a new image is ready, queue it (`pending_upload = True`) without blocking the API.
-  - Run a lightweight background worker (and expose a wake-up webhook `POST /api/fraimic/wakeup` for Home Assistant) that checks frame availability (lightweight HTTP ping to `/api/status` or `/api/battery` every X seconds while an upload is pending) and automatically pushes `current.bin` as soon as the frame responds.
+  - Run a lightweight background worker (and expose a wake-up webhook `POST /api/fraimic/wakeup` for Home Assistant) that checks frame availability (lightweight HTTP ping to the frame's `GET /api/info` every X seconds while an upload is pending) and automatically pushes `current.bin` as soon as the frame responds.
 - **Autonomous Scheduler:** Configurable periodic auto-refresh (every X hours, with a quiet-hours night window) controllable from the UI.
 
 ### 4. Built-in Web UI (`GET /`)
