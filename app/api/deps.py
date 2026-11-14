@@ -13,6 +13,7 @@ from app.providers.immich import ImmichProvider, PeopleDirectory
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
+from app.services.scheduler import SchedulerService
 
 
 def get_settings(request: Request) -> EnvSettings:
@@ -50,6 +51,11 @@ def get_immich_provider(request: Request) -> ImmichProvider:
     return cast(ImmichProvider, request.app.state.immich_provider)
 
 
+def get_scheduler_service(request: Request) -> SchedulerService:
+    """The autonomous refresh scheduler."""
+    return cast(SchedulerService, request.app.state.scheduler_service)
+
+
 def get_people_directory(request: Request) -> PeopleDirectory:
     """Cache of the people known to each Immich account."""
     return cast(PeopleDirectory, request.app.state.people_directory)
@@ -63,3 +69,4 @@ DeliveryServiceDep = Annotated[DeliveryService, Depends(get_delivery_service)]
 DisplayServiceDep = Annotated[DisplayService, Depends(get_display_service)]
 ImmichProviderDep = Annotated[ImmichProvider, Depends(get_immich_provider)]
 PeopleDirectoryDep = Annotated[PeopleDirectory, Depends(get_people_directory)]
+SchedulerDep = Annotated[SchedulerService, Depends(get_scheduler_service)]

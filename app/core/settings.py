@@ -172,6 +172,11 @@ class EnvSettings(BaseSettings):
         """Directory holding the upload waiting for the frame (``pending.bin``)."""
         return self.data_dir / "queue"
 
+    @property
+    def scheduler_state_path(self) -> Path:
+        """Location of the scheduler state (replayable rule, timer, last run)."""
+        return self.data_dir / "scheduler_state.json"
+
     def secret_values(self) -> list[str]:
         """All secret values provided through the environment (for log masking)."""
         values = [self.api_key]
