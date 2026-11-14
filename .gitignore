@@ -1,0 +1,37 @@
+# --- Secrets & runtime data ---------------------------------------------------
+.env
+.env.*
+!.env.example
+/data/
+
+# --- Third-party reference material (kept locally, never committed) ----------
+/fraimic-docs/
+
+# --- Generated images & frame buffers -----------------------------------------
+*.bin
+*.jpg
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# --- Tooling caches -------------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Editors & OS ---------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
