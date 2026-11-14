@@ -311,3 +311,13 @@ def test_status_before_any_image(make_client: ClientFactory) -> None:
 )
 def test_clean_filename(raw: str | None, expected: str | None) -> None:
     assert _clean_filename(raw) == expected
+
+
+@respx.mock
+def test_upload_accepts_heic(frame_client: Callable[..., TestClient]) -> None:
+    buffer = io.BytesIO()
+    Image.new("RGB", (320, 240), (30, 90, 200)).save(buffer, format="HEIF", quality=85)
+    client = frame_client()
+    response = upload(client, push=False, data=buffer.getvalue())
+    assert response.status_code == 200, response.text
+    assert response.json()["image"]["bin_size"] == 960_000

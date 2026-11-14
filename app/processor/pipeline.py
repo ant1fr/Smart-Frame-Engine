@@ -6,9 +6,9 @@ Steps:
 2. Compose in *viewing* orientation (``frame_size`` honours portrait/landscape):
    ``smart_crop`` (fill, face-aware) or ``contain`` (fit + blur/black/white background),
    with the eInk enhancement applied to the picture only.
-3. Dither in viewing orientation (Atkinson or Floyd-Steinberg, tuned metric).
-4. Rotate the palette indices losslessly into the panel's native portrait buffer
-   (``landscape_rotation`` degrees counter-clockwise) and pack the ``.bin``.
+3. Rotate the composition into the panel's native portrait buffer (``landscape_rotation``
+   degrees counter-clockwise), then dither it (Atkinson or Floyd-Steinberg, tuned metric).
+4. Pack the ``.bin``; the preview indices are rotated back to viewing orientation.
 
 Rendering is CPU-bound and synchronous; call it through ``asyncio.to_thread``.
 """
@@ -26,7 +26,7 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image, ImageOps
 
-from app.core.config_models import EinkConfig, FitMode, PanelSpec, RuntimeConfig
+from app.core.config_models import EinkConfig, EinkProfile, FitMode, PanelSpec, RuntimeConfig
 from app.core.security import verify_image_bytes
 from app.processor.dither import dither
 from app.processor.enhance import enhance
@@ -76,6 +76,7 @@ class RenderOptions:
     fit: FitMode
     background: BackgroundStyle
     eink: EinkConfig
+    safe_margin_px: int = 0
 
     def __post_init__(self) -> None:
         native = (self.panel.width, self.panel.height)
@@ -85,10 +86,24 @@ class RenderOptions:
                 f"frame_size {self.frame_size} does not match panel {native} "
                 f"with rotation {self.rotation}"
             )
+        if not 0 <= self.safe_margin_px < min(self.frame_size) // 4:
+            raise ValueError("safe_margin_px must be between 0 and a quarter of the short side")
 
     @classmethod
-    def from_config(cls, config: RuntimeConfig, *, fit: FitMode | None = None) -> RenderOptions:
-        """Build options from the effective config, optionally overriding the fit mode."""
+    def from_config(
+        cls,
+        config: RuntimeConfig,
+        *,
+        fit: FitMode | None = None,
+        eink_profile: EinkProfile | None = None,
+    ) -> RenderOptions:
+        """Build options from the effective config.
+
+        Args:
+            config: Effective runtime configuration.
+            fit: Overrides the default fit mode.
+            eink_profile: Overrides ``eink.profile`` (e.g. posters always use ``official``).
+        """
         rotation: Rotation = (
             0 if config.display.orientation == "portrait" else config.display.landscape_rotation
         )
@@ -98,7 +113,8 @@ class RenderOptions:
             rotation=rotation,
             fit=fit or config.display.default_fit,
             background=config.display.contain_background,
-            eink=config.eink,
+            eink=config.eink.effective(eink_profile),
+            safe_margin_px=config.display.safe_margin_px,
         )
 
 
@@ -139,10 +155,17 @@ class RenderResult:
 def compose(
     image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
 ) -> Image.Image:
-    """Fit and enhance ``image`` into the frame, in viewing orientation."""
+    """Fit and enhance ``image`` into the frame, in viewing orientation.
+
+    The picture fills the frame minus ``safe_margin_px`` on every side; whatever is left
+    over (the margin, or the bars of the ``contain`` fit) is the background.
+    """
+    margin = options.safe_margin_px
+    area = (options.frame_size[0] - 2 * margin, options.frame_size[1] - 2 * margin)
     if options.fit == "smart_crop":
-        return enhance(smart_crop(image, options.frame_size, regions), options.eink)
-    picture = enhance(fit_inside(image, options.frame_size), options.eink)
+        picture = enhance(smart_crop(image, area, regions), options.eink)
+    else:
+        picture = enhance(fit_inside(image, area), options.eink)
     if picture.size == options.frame_size:
         return picture
     background = make_background(image, options.frame_size, options.background)
@@ -156,8 +179,15 @@ def render(
 ) -> RenderResult:
     """Compose, dither and encode ``image`` for the configured panel."""
     composed = compose(image.convert("RGB"), options, regions)
-    indices = dither(np.asarray(composed, dtype=np.uint8), options.eink.dither)
-    portrait = np.ascontiguousarray(np.rot90(indices, k=options.rotation // 90))
+    quarter_turns = options.rotation // 90
+    # Rotate *before* dithering, like the official converter's ``--fit rotate``: error
+    # diffusion scans the panel's native portrait buffer, so the ``.bin`` is byte-identical.
+    native_rgb = np.ascontiguousarray(
+        np.rot90(np.asarray(composed, dtype=np.uint8), k=quarter_turns)
+    )
+    portrait = dither(native_rgb, options.eink.dither)
+    # The preview indices stay in viewing orientation (a lossless inverse rotation).
+    indices = np.ascontiguousarray(np.rot90(portrait, k=-quarter_turns))
     return RenderResult(
         options=options,
         composed=composed,

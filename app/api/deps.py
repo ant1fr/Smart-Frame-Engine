@@ -9,6 +9,7 @@ from fastapi import Depends, Request
 from app.core.config_store import ConfigStore
 from app.core.history_store import HistoryStore
 from app.core.settings import EnvSettings
+from app.providers.immich import ImmichProvider, PeopleDirectory
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
@@ -44,9 +45,21 @@ def get_display_service(request: Request) -> DisplayService:
     return cast(DisplayService, request.app.state.display_service)
 
 
+def get_immich_provider(request: Request) -> ImmichProvider:
+    """The Immich image provider."""
+    return cast(ImmichProvider, request.app.state.immich_provider)
+
+
+def get_people_directory(request: Request) -> PeopleDirectory:
+    """Cache of the people known to each Immich account."""
+    return cast(PeopleDirectory, request.app.state.people_directory)
+
+
 SettingsDep = Annotated[EnvSettings, Depends(get_settings)]
 ConfigStoreDep = Annotated[ConfigStore, Depends(get_config_store)]
 HistoryStoreDep = Annotated[HistoryStore, Depends(get_history_store)]
 CurrentImageStoreDep = Annotated[CurrentImageStore, Depends(get_current_image_store)]
 DeliveryServiceDep = Annotated[DeliveryService, Depends(get_delivery_service)]
 DisplayServiceDep = Annotated[DisplayService, Depends(get_display_service)]
+ImmichProviderDep = Annotated[ImmichProvider, Depends(get_immich_provider)]
+PeopleDirectoryDep = Annotated[PeopleDirectory, Depends(get_people_directory)]

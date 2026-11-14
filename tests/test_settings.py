@@ -58,7 +58,9 @@ def test_reads_environment(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> N
     assert settings.log_level == "DEBUG"
     assert settings.tmdb_api_key is None
     assert settings.runtime_seed() == {
-        "immich": {"url": "http://immich.local:2283", "api_key": "immich-key"},
+        "immich": {
+            "accounts": {"default": {"url": "http://immich.local:2283", "api_key": "immich-key"}}
+        },
         "fraimic": {"panel": "315"},
         "scheduler": {"enabled": True, "interval_hours": 3.0, "timezone": "Europe/Paris"},
     }

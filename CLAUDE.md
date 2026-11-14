@@ -53,7 +53,8 @@ Clean, responsive (mobile/desktop) English web interface allowing users to:
 - Configure all application settings without editing files manually (persisted to `/data/config.json`).
 
 ### 5. REST API (`GET /docs`)
-- `POST /api/display/immich`: Select and display an Immich photo (`persons`, `match_mode`, `album`, `push_to_fraimic`).
+- `POST /api/display/immich`: Select and display an Immich photo (`mode` random|album|favorites|search, `persons` as plain names, `match_mode`, `always_include`, `album_name`/`album_id`, `clip_queries`, `accounts`, `fit`, `push_to_fraimic`, `ignore_history`).
+- `GET /api/immich/albums`, `GET /api/immich/people`, `POST /api/immich/people/refresh`: Discovery across the configured Immich accounts (`immich.accounts`; keys are masked and `GET /api/immich/*` is API-key protected when `APP_API_KEY` is set).
 - `POST /api/display/media`: Search and display an HD poster (`title`, `media_type`, `fallback_url`, `push_to_fraimic`).
 - `POST /api/fraimic/wakeup`: Webhook signaling frame wake-up to flush any queued upload immediately.
 - `POST /api/refresh`: Re-run the currently active source rule.

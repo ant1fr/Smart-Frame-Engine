@@ -9,6 +9,7 @@ from app.core.config_models import (
     MASK_PREFIX,
     PANEL_SPECS,
     FraimicConfig,
+    ImmichAccountConfig,
     ImmichConfig,
     RuntimeConfig,
     SchedulerConfig,
@@ -16,6 +17,7 @@ from app.core.config_models import (
     dump_config,
     is_masked,
     mask_secret,
+    nested_secret_values,
     secret_field_paths,
 )
 
@@ -82,16 +84,36 @@ def test_fraimic_paths_must_be_absolute(path: str) -> None:
         FraimicConfig(status_path=path)
 
 
-def test_immich_url_and_persons_are_cleaned() -> None:
-    config = ImmichConfig(url=" http://immich.local:2283/ ", persons=[" Alice", "Bob", "Alice", ""])
-    assert config.url == "http://immich.local:2283"
+def test_immich_persons_and_account_are_cleaned() -> None:
+    config = ImmichConfig(
+        persons=[" Alice", "Bob", "Alice", ""],
+        always_include=[" Kid ", "Kid"],
+        accounts={"home": {"url": " http://immich.local:2283/ ", "api_key": " key-1 "}},  # type: ignore[dict-item]
+        person_aliases={" Marie ": {"home": [" Marie ", "", "7f0c"]}},
+    )
     assert config.persons == ["Alice", "Bob"]
+    assert config.always_include == ["Kid"]
+    assert config.accounts["home"].url == "http://immich.local:2283"
+    assert config.accounts["home"].api_key.get_secret_value() == "key-1"
+    assert config.person_aliases == {"Marie": {"home": ["Marie", "7f0c"]}}
 
 
-@pytest.mark.parametrize("url", ["immich.local", "file:///etc/passwd", "http://u:p@immich"])
-def test_immich_url_rejects_bad_values(url: str) -> None:
+@pytest.mark.parametrize("url", ["", "immich.local", "file:///etc/passwd", "http://u:p@immich"])
+def test_immich_account_url_rejects_bad_values(url: str) -> None:
     with pytest.raises(ValidationError):
-        ImmichConfig(url=url)
+        ImmichAccountConfig(url=url, api_key=SecretStr("k"))
+
+
+def test_immich_account_requires_a_key_and_valid_names() -> None:
+    with pytest.raises(ValidationError):
+        ImmichAccountConfig(url="http://immich", api_key=SecretStr("  "))
+    account = {"url": "http://immich", "api_key": "k"}
+    with pytest.raises(ValidationError):
+        ImmichConfig.model_validate({"accounts": {"bad name!": account}})
+    with pytest.raises(ValidationError):
+        ImmichConfig.model_validate({"person_aliases": {"Marie": {"bad name": ["x"]}}})
+    with pytest.raises(ValidationError):
+        ImmichConfig.model_validate({"person_aliases": {" ": {}}})
 
 
 @pytest.mark.parametrize("language", ["fr-FR", "en-US", "de-DE"])
@@ -142,13 +164,50 @@ def test_secret_masking() -> None:
 
 def test_dump_config_reveals_or_masks_secrets() -> None:
     config = RuntimeConfig(
-        immich=ImmichConfig(api_key=SecretStr("immich-secret-key-1234")),
+        immich=ImmichConfig(
+            accounts={
+                "home": ImmichAccountConfig(
+                    url="http://immich", api_key=SecretStr("immich-secret-key-1234")
+                )
+            }
+        ),
         tmdb=TmdbConfig(api_key=SecretStr("tmdb")),
     )
-    assert set(secret_field_paths()) == {("immich", "api_key"), ("tmdb", "api_key")}
+    assert set(secret_field_paths()) == {("tmdb", "api_key")}
+    assert nested_secret_values(config) == ["immich-secret-key-1234"]
     revealed = dump_config(config, reveal_secrets=True)
     masked = dump_config(config, reveal_secrets=False)
-    assert revealed["immich"]["api_key"] == "immich-secret-key-1234"
-    assert masked["immich"]["api_key"] == MASK_PREFIX + "1234"
+    assert revealed["immich"]["accounts"]["home"]["api_key"] == "immich-secret-key-1234"
+    assert masked["immich"]["accounts"]["home"]["api_key"] == MASK_PREFIX + "1234"
+    assert "immich-secret-key-1234" not in str(masked)
     assert masked["tmdb"]["api_key"] == MASK_PREFIX
     assert RuntimeConfig.model_validate(revealed) == config
+
+
+# --- eInk profiles -----------------------------------------------------------------------------
+def test_official_profile_is_the_default_and_leaves_values_untouched() -> None:
+    from app.core.config_models import EinkConfig
+
+    config = EinkConfig(contrast=1.4, dither="floyd_steinberg")
+    assert config.profile == "official"
+    assert config.effective() is config
+
+
+def test_photo_profile_overrides_the_five_tuning_fields_but_keeps_dithering() -> None:
+    from app.core.config_models import PHOTO_PROFILE, EinkConfig
+
+    config = EinkConfig(profile="photo", contrast=1.5, dither="floyd_steinberg")
+    effective = config.effective()
+    for name, value in PHOTO_PROFILE.items():
+        assert getattr(effective, name) == value
+    assert effective.dither == "floyd_steinberg"
+    assert effective.edge_filters is False and effective.saturation == 0.85
+    assert config.contrast == 1.5  # the stored configuration is not modified
+
+
+def test_effective_profile_can_be_forced_per_source() -> None:
+    from app.core.config_models import EinkConfig
+
+    photo = EinkConfig(profile="photo")
+    assert photo.effective("official") is photo
+    assert EinkConfig().effective("photo").saturation == 0.85

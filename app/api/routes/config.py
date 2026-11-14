@@ -37,8 +37,8 @@ class ResetRequest(BaseModel):
 
     paths: list[str] | None = Field(
         default=None,
-        description="Entries like 'immich' (whole section) or 'immich.url' (single field)",
-        examples=[["immich.url", "eink"]],
+        description="Entries like 'immich' (whole section) or 'immich.accounts' (single field)",
+        examples=[["immich.accounts", "eink"]],
     )
 
 
@@ -56,7 +56,13 @@ PATCH_EXAMPLES: dict[str, Any] = {
     },
     "immich": {
         "summary": "Immich defaults",
-        "value": {"immich": {"persons": ["Alice", "Bob"], "match_mode": "any"}},
+        "value": {
+            "immich": {
+                "accounts": {"default": {"url": "http://immich.local:2283", "api_key": "..."}},
+                "persons": ["Alice", "Bob"],
+                "match_mode": "any",
+            }
+        },
     },
 }
 

@@ -183,10 +183,6 @@ class EnvSettings(BaseSettings):
         to the built-in defaults.
         """
         candidates: dict[tuple[str, str], Any] = {
-            ("immich", "url"): self.immich_url,
-            ("immich", "api_key"): (
-                self.immich_api_key.get_secret_value() if self.immich_api_key else None
-            ),
             ("tmdb", "api_key"): (
                 self.tmdb_api_key.get_secret_value() if self.tmdb_api_key else None
             ),
@@ -203,6 +199,15 @@ class EnvSettings(BaseSettings):
         for (section, name), value in candidates.items():
             if value is not None:
                 seed.setdefault(section, {})[name] = value
+        if self.immich_url and self.immich_api_key:
+            seed["immich"] = {
+                "accounts": {
+                    "default": {
+                        "url": self.immich_url,
+                        "api_key": self.immich_api_key.get_secret_value(),
+                    }
+                }
+            }
         return seed
 
 

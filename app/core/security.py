@@ -12,11 +12,17 @@ from typing import Final, Protocol
 from urllib.parse import urlsplit
 
 from PIL import Image, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
-ALLOWED_IMAGE_FORMATS: Final = frozenset({"JPEG", "MPO", "PNG", "WEBP", "GIF", "TIFF", "BMP"})
+# HEIC/HEIF (iPhone originals) decode through pillow-heif; AVIF is intentionally not allowed.
+register_heif_opener()
+
+ALLOWED_IMAGE_FORMATS: Final = frozenset(
+    {"JPEG", "MPO", "PNG", "WEBP", "GIF", "TIFF", "BMP", "HEIF"}
+)
 MAX_IMAGE_PIXELS: Final = 120_000_000
 UPLOAD_CHUNK_SIZE: Final = 64 * 1024
 

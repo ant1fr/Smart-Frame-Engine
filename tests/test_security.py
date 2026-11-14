@@ -159,3 +159,29 @@ def test_verify_image_rejects_unsupported_format() -> None:
 def test_verify_image_enforces_pixel_limit() -> None:
     with pytest.raises(InvalidImageError, match="too large"):
         verify_image_bytes(_image_bytes("PNG", (100, 100)), max_pixels=9_999)
+
+
+# --- HEIC / HEIF ---------------------------------------------------------------------------
+def _heic_bytes(
+    size: tuple[int, int] = (96, 64), color: tuple[int, int, int] = (200, 40, 40)
+) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color).save(buffer, format="HEIF", quality=85)
+    return buffer.getvalue()
+
+
+def test_heic_images_are_accepted_and_decoded() -> None:
+    from app.processor.pipeline import decode_image
+
+    data = _heic_bytes()
+    assert verify_image_bytes(data) == "HEIF"
+    decoded = decode_image(data)
+    assert decoded.mode == "RGB" and decoded.size == (96, 64)
+    red, green, blue = decoded.getpixel((10, 10))
+    assert red > 150 and green < 90 and blue < 90
+
+
+def test_corrupt_heic_is_rejected() -> None:
+    data = _heic_bytes()
+    with pytest.raises(InvalidImageError):
+        verify_image_bytes(data[: len(data) // 2])

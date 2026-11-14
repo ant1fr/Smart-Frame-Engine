@@ -29,6 +29,7 @@ PanelModel = Literal["133", "315"]
 Orientation = Literal["portrait", "landscape"]
 FitMode = Literal["smart_crop", "contain"]
 DitherAlgorithm = Literal["atkinson", "floyd_steinberg"]
+EinkProfile = Literal["official", "photo"]
 PowerMode = Literal["continuous", "deepsleep"]
 
 
@@ -77,14 +78,61 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
-class ImmichConfig(_Section):
-    """Connection and default selection filters for the Immich provider."""
+ACCOUNT_NAME_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
-    url: str = Field(default="", description="Immich base URL, e.g. http://immich.local:2283")
-    api_key: SecretStr = Field(default=SecretStr(""), description="Immich API key")
+
+def _clean_names(value: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for name in value:
+        stripped = name.strip()
+        if stripped and stripped not in cleaned:
+            cleaned.append(stripped)
+    return cleaned
+
+
+class ImmichAccountConfig(_Section):
+    """One Immich server/account (a family member or a shared library)."""
+
+    url: str = Field(description="Immich base URL, e.g. http://immich.local:2283")
+    api_key: SecretStr = Field(description="Immich API key of this account")
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        normalized = _normalize_http_base_url(value)
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("api_key")
+    @classmethod
+    def _validate_key(cls, value: SecretStr) -> SecretStr:
+        raw = value.get_secret_value().strip()
+        if not raw:
+            raise ValueError("must not be empty")
+        return SecretStr(raw)
+
+
+class ImmichConfig(_Section):
+    """Immich accounts and the default selection filters of the Immich provider."""
+
+    accounts: dict[str, ImmichAccountConfig] = Field(
+        default_factory=dict,
+        description="Immich accounts by name (IMMICH_URL/IMMICH_API_KEY seed one named 'default')",
+    )
     persons: list[str] = Field(default_factory=list, description="Default person names filter")
+    always_include: list[str] = Field(
+        default_factory=list,
+        description="Person names merged into every selection (e.g. children without a "
+        "Home Assistant presence), unless a request overrides them",
+    )
     match_mode: Literal["any", "all"] = Field(
         default="any", description="Match photos containing any or all of the persons"
+    )
+    person_aliases: dict[str, dict[str, list[str]]] = Field(
+        default_factory=dict,
+        description="Canonical person name -> account name -> person IDs or names in that "
+        "account (disambiguates duplicate or differently named people)",
     )
     album: str = Field(default="", description="Default album name filter (empty = all)")
     favorites_only: bool = Field(default=False, description="Only pick favorite assets")
@@ -92,20 +140,44 @@ class ImmichConfig(_Section):
     anti_repeat_days: int = Field(
         default=30, ge=0, le=3650, description="Do not show the same photo again within N days"
     )
+    people_cache_ttl_s: int = Field(
+        default=3600, ge=0, le=604_800, description="How long the people list is cached (0 = off)"
+    )
+    search_candidates: int = Field(
+        default=40, ge=5, le=200, description="Candidates fetched per search before picking one"
+    )
 
-    @field_validator("url")
+    @field_validator("accounts")
     @classmethod
-    def _validate_url(cls, value: str) -> str:
-        return _normalize_http_base_url(value)
+    def _validate_account_names(
+        cls, value: dict[str, ImmichAccountConfig]
+    ) -> dict[str, ImmichAccountConfig]:
+        for name in value:
+            if not ACCOUNT_NAME_RE.match(name):
+                raise ValueError(f"invalid account name {name!r}: use 1-32 letters, digits, - or _")
+        return value
 
-    @field_validator("persons")
+    @field_validator("persons", "always_include")
     @classmethod
     def _clean_persons(cls, value: list[str]) -> list[str]:
-        cleaned: list[str] = []
-        for name in value:
-            stripped = name.strip()
-            if stripped and stripped not in cleaned:
-                cleaned.append(stripped)
+        return _clean_names(value)
+
+    @field_validator("person_aliases")
+    @classmethod
+    def _clean_aliases(
+        cls, value: dict[str, dict[str, list[str]]]
+    ) -> dict[str, dict[str, list[str]]]:
+        cleaned: dict[str, dict[str, list[str]]] = {}
+        for canonical, per_account in value.items():
+            name = canonical.strip()
+            if not name:
+                raise ValueError("alias names must not be empty")
+            targets: dict[str, list[str]] = {}
+            for account, entries in per_account.items():
+                if not ACCOUNT_NAME_RE.match(account):
+                    raise ValueError(f"invalid account name {account!r} in alias {name!r}")
+                targets[account] = _clean_names(entries)
+            cleaned[name] = targets
         return cleaned
 
 
@@ -200,11 +272,36 @@ class DisplayConfig(_Section):
     contain_background: Literal["blur", "black", "white"] = Field(
         default="blur", description="Padding style used by the contain fit mode"
     )
+    safe_margin_px: int = Field(
+        default=0,
+        ge=0,
+        le=250,
+        description="Inset (pixels) kept clear on every side so subjects stay out of the "
+        "frame's mat/bezel; the margin is filled with the contain background style",
+    )
+
+
+#: Values of the ``photo`` profile, tuned on a real Spectra 6 panel with indoor photos: the
+#: official edge-enhance/sharpen chain and +20% saturation/contrast make photos look
+#: outlined, over-saturated and grainy. Dithering stays as configured.
+PHOTO_PROFILE: Final[dict[str, float | bool]] = {
+    "brightness": 1.0,
+    "contrast": 1.0,
+    "saturation": 0.85,
+    "sharpness": 0.8,
+    "edge_filters": False,
+}
 
 
 class EinkConfig(_Section):
     """Color eInk optimization. Defaults mirror the official Fraimic converter."""
 
+    profile: EinkProfile = Field(
+        default="official",
+        description="official = the values below (defaults = official converter); photo = softer "
+        "preset for photographs that overrides brightness, contrast, saturation, sharpness "
+        "and edge_filters",
+    )
     brightness: float = Field(default=1.1, ge=0.1, le=3.0, description="1.0 = unchanged")
     contrast: float = Field(default=1.2, ge=0.1, le=3.0, description="1.0 = unchanged")
     saturation: float = Field(default=1.2, ge=0.0, le=3.0, description="1.0 = unchanged")
@@ -216,6 +313,16 @@ class EinkConfig(_Section):
         default="atkinson",
         description="atkinson = tuned color metric (official default); floyd_steinberg = classic",
     )
+
+    def effective(self, profile: EinkProfile | None = None) -> EinkConfig:
+        """The values actually used for rendering after applying the profile.
+
+        Args:
+            profile: Overrides :attr:`profile` (e.g. a poster source forcing ``official``).
+        """
+        if (profile or self.profile) == "official":
+            return self
+        return self.model_copy(update=PHOTO_PROFILE)
 
 
 class SourceRule(BaseModel):
@@ -335,7 +442,21 @@ def dump_config(config: RuntimeConfig, *, reveal_secrets: bool) -> dict[str, dic
         secret: SecretStr = getattr(getattr(config, section), name)
         raw = secret.get_secret_value()
         data[section][name] = raw if reveal_secrets else mask_secret(raw)
+    for account_name, account in config.immich.accounts.items():
+        raw = account.api_key.get_secret_value()
+        data["immich"]["accounts"][account_name]["api_key"] = (
+            raw if reveal_secrets else mask_secret(raw)
+        )
     return data
+
+
+def nested_secret_values(config: RuntimeConfig) -> list[str]:
+    """Secrets stored inside nested structures (the Immich account API keys)."""
+    return [
+        raw
+        for account in config.immich.accounts.values()
+        if (raw := account.api_key.get_secret_value())
+    ]
 
 
 MASK_PREFIX: Final = "•" * 8

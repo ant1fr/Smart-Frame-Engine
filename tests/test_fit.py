@@ -11,6 +11,7 @@ from app.processor.fit import (
     fit_inside,
     make_background,
     paste_centered,
+    regions_that_fit,
     smart_crop,
 )
 from app.processor.pipeline import decode_image
@@ -148,3 +149,54 @@ def test_decode_flattens_transparency_on_white() -> None:
     decoded = decode_image(buffer.getvalue())
     assert decoded.mode == "RGB"
     assert decoded.getpixel((5, 5)) == (255, 255, 255)
+
+
+# --- padding + spread guard ----------------------------------------------------------
+def test_focus_region_padded_grows_each_side_and_clamps() -> None:
+    padded = FocusRegion(0.4, 0.4, 0.2, 0.1).padded(0.25)
+    assert (padded.x, padded.y) == pytest.approx((0.35, 0.375))
+    assert (padded.width, padded.height) == pytest.approx((0.3, 0.15))
+    edge = FocusRegion(0.0, 0.9, 0.2, 0.1).padded(0.5)
+    assert edge.x == 0.0 and edge.y + edge.height == pytest.approx(1.0)
+    with pytest.raises(ValueError):
+        FocusRegion(0.1, 0.1, 0.1, 0.1).padded(-0.1)
+
+
+def test_regions_that_fit_keeps_all_when_union_fits() -> None:
+    a, b = FocusRegion(0.1, 0.4, 0.1, 0.1), FocusRegion(0.3, 0.4, 0.1, 0.1)
+    assert regions_that_fit([a, b], 0.5, 1.0) == [a, b]
+
+
+def test_regions_that_fit_drops_regions_that_do_not_fit_largest_first() -> None:
+    small_left = FocusRegion(0.02, 0.4, 0.06, 0.1)
+    big_right = FocusRegion(0.85, 0.3, 0.1, 0.25)
+    mid_center = FocusRegion(0.7, 0.4, 0.08, 0.1)
+    kept = regions_that_fit([small_left, big_right, mid_center], 0.3, 1.0)
+    assert kept == [big_right, mid_center]
+
+
+def test_regions_that_fit_keeps_oversized_single_region_and_ignores_free_axes() -> None:
+    huge = FocusRegion(0.1, 0.1, 0.8, 0.8)
+    assert regions_that_fit([huge, FocusRegion(0.0, 0.0, 0.05, 0.05)], 0.3, 0.3) == [huge]
+    # The vertical axis is never cropped (window >= 1): only horizontal spread matters.
+    a, b = FocusRegion(0.1, 0.0, 0.1, 0.1), FocusRegion(0.15, 0.9, 0.1, 0.1)
+    assert regions_that_fit([a, b], 0.2, 1.0) == [a, b]
+    assert regions_that_fit([], 0.5, 0.5) == []
+
+
+def test_smart_crop_keeps_the_larger_face_whole_when_faces_are_too_far_apart() -> None:
+    # 4000x3000 photo into a portrait frame: the window covers 1200/2133 = 56% of the width.
+    image = Image.new("RGB", (4000, 3000), (255, 255, 255))
+    image.paste((255, 0, 0), (150, 1200, 450, 1500))  # small face, far left
+    image.paste((0, 0, 255), (3300, 1000, 3800, 1500))  # larger face, far right
+    regions = [
+        FocusRegion.from_pixels(150, 1200, 450, 1500, 4000, 3000),
+        FocusRegion.from_pixels(3300, 1000, 3800, 1500, 4000, 3000),
+    ]
+    cropped = np.asarray(smart_crop(image, (1200, 1600), regions))
+    blue = (cropped[..., 2] > 200) & (cropped[..., 0] < 60) & (cropped[..., 1] < 60)
+    red = (cropped[..., 0] > 200) & (cropped[..., 1] < 60) & (cropped[..., 2] < 60)
+    ys, xs = np.where(blue)
+    assert ys.size > 0 and xs.min() > 0 and xs.max() < 1199  # the big face is complete
+    assert xs.max() - xs.min() >= 0.9 * (500 * 1600 / 3000)
+    assert not red.any()  # the small face is dropped, not sliced in half
