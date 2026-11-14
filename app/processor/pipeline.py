@@ -39,7 +39,7 @@ from app.processor.fit import (
     smart_crop,
 )
 from app.processor.packing import encode_bin
-from app.processor.palette import indices_to_rgb
+from app.processor.palette import PALETTE_RGB
 
 Rotation = Literal[0, 90, 270]
 PREVIEW_JPEG_QUALITY = 90
@@ -123,9 +123,16 @@ class RenderResult:
         return buffer.getvalue()
 
     def dithered_png(self) -> bytes:
-        """Exact 6-color simulation of the panel output, in viewing orientation."""
+        """Exact 6-color simulation of the panel output, in viewing orientation.
+
+        Written as a palette (indexed) PNG: pixel-identical to the RGB rendering, but an
+        order of magnitude faster to encode and smaller than an RGB PNG.
+        """
+        height, width = self.indices.shape
+        image = Image.frombytes("P", (width, height), np.ascontiguousarray(self.indices).tobytes())
+        image.putpalette([channel for color in PALETTE_RGB for channel in color])
         buffer = io.BytesIO()
-        Image.fromarray(indices_to_rgb(self.indices)).save(buffer, format="PNG", optimize=True)
+        image.save(buffer, format="PNG")
         return buffer.getvalue()
 
 
