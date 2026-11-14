@@ -133,6 +133,40 @@ class RefreshOutcome:
     display: DisplayResult
 
 
+class QuietHoursView(BaseModel):
+    """The configured quiet window (local time of ``timezone``)."""
+
+    start: str
+    end: str
+
+
+class ActiveRuleView(BaseModel):
+    """Which rule a refresh would replay."""
+
+    kind: str
+    source: RuleSource = Field(
+        description="pinned = scheduler.source_rule; last = the last manual display request"
+    )
+
+
+class SchedulerSnapshot(BaseModel):
+    """Scheduler state exposed through ``GET /api/status`` (no network access)."""
+
+    enabled: bool
+    interval_hours: float
+    timezone: str
+    quiet_hours: QuietHoursView | None = Field(description="null when quiet hours are off")
+    in_quiet_hours: bool
+    next_run_at: AwareDatetime | None = Field(
+        description="Next scheduled refresh in the scheduler timezone (null when disabled)"
+    )
+    running: bool = Field(description="Whether a refresh is in progress")
+    last_run: LastRun | None
+    last_display_at: AwareDatetime | None
+    consecutive_failures: int
+    active_rule: ActiveRuleView | None = Field(description="null until something can be replayed")
+
+
 def quiet_window(config: SchedulerConfig) -> QuietWindow | None:
     """The configured quiet window, or ``None`` when quiet hours are off."""
     return QuietWindow.parse(config.quiet_hours_start, config.quiet_hours_end)
@@ -245,6 +279,31 @@ class SchedulerService:
         """Whether the current time falls inside the configured quiet window."""
         config = self._config.scheduler
         return in_quiet(self._clock(), quiet_window(config), ZoneInfo(config.timezone))
+
+    def snapshot(self) -> SchedulerSnapshot:
+        """Current scheduler state for the status endpoint."""
+        config = self._config.scheduler
+        active = self.active_rule()
+        quiet = (
+            QuietHoursView(start=config.quiet_hours_start, end=config.quiet_hours_end)
+            if config.quiet_hours_start and config.quiet_hours_end
+            else None
+        )
+        return SchedulerSnapshot(
+            enabled=config.enabled,
+            interval_hours=config.interval_hours,
+            timezone=config.timezone,
+            quiet_hours=quiet,
+            in_quiet_hours=self.in_quiet_hours(),
+            next_run_at=self._next_run_at,
+            running=self.running,
+            last_run=self._state.last_run,
+            last_display_at=self._state.last_display_at,
+            consecutive_failures=self._state.consecutive_failures,
+            active_rule=(
+                ActiveRuleView(kind=active.rule.kind, source=active.source) if active else None
+            ),
+        )
 
     def compute_next_run(self) -> datetime | None:
         """When the next scheduled refresh should run, from the state and the config."""

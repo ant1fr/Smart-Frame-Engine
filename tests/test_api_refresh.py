@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi.testclient import TestClient
@@ -136,9 +138,67 @@ def test_provider_errors_are_mapped(make_client: ClientFactory) -> None:
         assert exhausted.status_code == 404
         fake.search_error = 500
         assert refresh(client).status_code == 502
+    status = client.get("/api/status").json()["scheduler"]
+    assert status["last_run"]["status"] == "failed"
+    assert status["last_run"]["reason"] == "manual"
+    assert status["last_run"]["detail"]
+    assert status["consecutive_failures"] == 0  # manual failures do not back off
 
 
 def test_refresh_requires_the_api_key(make_client: ClientFactory) -> None:
     client = make_client(app_api_key=KEY)
     assert refresh(client).status_code == 401
     assert refresh(client, **{"X-API-Key": KEY}).status_code == 409
+
+
+# --- Status ---------------------------------------------------------------------------
+def test_status_when_disabled(make_client: ClientFactory) -> None:
+    status = make_client().get("/api/status").json()["scheduler"]
+    assert status == {
+        "enabled": False,
+        "interval_hours": 6.0,
+        "timezone": "UTC",
+        "quiet_hours": None,
+        "in_quiet_hours": False,
+        "next_run_at": None,
+        "running": False,
+        "last_run": None,
+        "last_display_at": None,
+        "consecutive_failures": 0,
+        "active_rule": None,
+    }
+
+
+def test_status_after_a_display(make_client: ClientFactory) -> None:
+    fake = alice_and_bob()
+    client = immich_client(
+        make_client, scheduler_enabled=True, refresh_interval_hours=2, tz="Europe/Paris"
+    )
+    with servers(fake):
+        assert show(client, persons=["Alice"]).status_code == 200
+    status = client.get("/api/status").json()["scheduler"]
+    assert status["enabled"] is True and status["timezone"] == "Europe/Paris"
+    assert status["active_rule"] == {"kind": "immich", "source": "last"}
+    shown = datetime.fromisoformat(status["last_display_at"])
+    next_run = datetime.fromisoformat(status["next_run_at"])
+    assert next_run - shown == timedelta(hours=2)
+    assert next_run.utcoffset() == next_run.astimezone(ZoneInfo("Europe/Paris")).utcoffset()
+
+
+def test_status_inside_quiet_hours(make_client: ClientFactory) -> None:
+    paris = ZoneInfo("Europe/Paris")
+    now = datetime.now(paris)
+    start = (now - timedelta(hours=1)).strftime("%H:%M")
+    end_at = now + timedelta(hours=1)
+    client = make_client(
+        scheduler_enabled=True,
+        refresh_interval_hours=0.25,
+        tz="Europe/Paris",
+        quiet_hours_start=start,
+        quiet_hours_end=end_at.strftime("%H:%M"),
+    )
+    status = client.get("/api/status").json()["scheduler"]
+    assert status["quiet_hours"] == {"start": start, "end": end_at.strftime("%H:%M")}
+    assert status["in_quiet_hours"] is True
+    next_run = datetime.fromisoformat(status["next_run_at"]).astimezone(paris)
+    assert next_run.strftime("%Y-%m-%d %H:%M") == end_at.strftime("%Y-%m-%d %H:%M")
