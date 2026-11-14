@@ -381,7 +381,8 @@ class DeliveryService:
             due = pending.next_attempt_at is None or pending.next_attempt_at <= self._clock()
             if woken or config.power_mode == "deepsleep" or due:
                 await self.flush("worker")
-        elif config.power_mode == "continuous" and config.base_url:
+        elif not woken and config.power_mode == "continuous" and config.base_url:
+            # Periodic telemetry only; wake signals (e.g. config edits) do not hit the network.
             await self._refresh_quietly()
 
     # --- Internals --------------------------------------------------------------------------
