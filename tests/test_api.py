@@ -100,6 +100,7 @@ def test_config_schema(make_client: ClientFactory) -> None:
         "display",
         "eink",
         "scheduler",
+        "quality",
     }
 
 
