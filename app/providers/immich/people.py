@@ -15,7 +15,7 @@ from __future__ import annotations
 import difflib
 import re
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Final
@@ -128,6 +128,10 @@ class PeopleDirectory:
         self._clock = clock
         self._now = now
         self._cache: dict[str, tuple[float, AccountPeople]] = {}
+
+    def account_names(self, names: Sequence[str] | None = None) -> list[str]:
+        """Selected configured account names (validates ``names``)."""
+        return list(self._gateway.accounts(names))
 
     def _fingerprint(self, account: str) -> tuple[str, str]:
         config = self._gateway.accounts([account])[account]

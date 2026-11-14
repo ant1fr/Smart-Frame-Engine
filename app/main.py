@@ -23,6 +23,7 @@ from app.api.routes import config as config_routes
 from app.api.routes import display as display_routes
 from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
+from app.api.routes import immich as immich_routes
 from app.api.routes import system as system_routes
 from app.core.auth import APIKeyMiddleware
 from app.core.config_models import RuntimeConfig
@@ -31,7 +32,9 @@ from app.core.history_store import HistoryStore
 from app.core.limits import MULTIPART_OVERHEAD_BYTES, BodySizeLimitMiddleware
 from app.core.logging_config import masking_filter, setup_logging
 from app.core.proxy import RootPathMiddleware
+from app.core.security import URLPolicy
 from app.core.settings import EnvSettings, get_env_settings
+from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
@@ -89,13 +92,27 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         current_store.load()
         delivery = DeliveryService(settings.queue_dir, config_store)
         delivery.load()
-        display = DisplayService(config_store, current_store, delivery)
+        display = DisplayService(config_store, current_store, delivery, history_store)
+        url_policy = URLPolicy.from_entries(
+            settings.block_private_urls, settings.url_allowlist_entries
+        )
+        immich_gateway = ImmichGateway(config_store, url_policy)
+        people = PeopleDirectory(config_store, immich_gateway)
+        immich = ImmichProvider(
+            config_store,
+            immich_gateway,
+            people,
+            history_store,
+            max_bytes=settings.max_upload_bytes,
+        )
 
         app.state.config_store = config_store
         app.state.history_store = history_store
         app.state.current_image_store = current_store
         app.state.delivery_service = delivery
         app.state.display_service = display
+        app.state.people_directory = people
+        app.state.immich_provider = immich
 
         await delivery.start()
         config = config_store.config
@@ -161,6 +178,8 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(config_routes.router)
     app.include_router(image_routes.router)
     app.include_router(display_routes.router)
+    app.include_router(immich_routes.display_router)
+    app.include_router(immich_routes.router)
     app.include_router(fraimic_routes.router)
 
     @app.get("/", include_in_schema=False)

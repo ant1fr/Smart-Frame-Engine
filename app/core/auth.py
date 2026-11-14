@@ -3,7 +3,8 @@
 Rules when ``APP_API_KEY`` is set (no-op when it is empty):
 
 * ``POST``/``PUT``/``PATCH``/``DELETE`` on any route require the key.
-* ``/api/config`` and everything below it require the key for every method.
+* ``/api/config`` and ``/api/immich`` (family member names, albums) and everything
+  below them require the key for every method.
 * ``/api/current.jpg``, ``/api/current.bin`` and ``/api/current_dithered.png`` require
   the key only when
   ``PUBLIC_IMAGE_ENDPOINTS=false``.
@@ -28,7 +29,7 @@ API_KEY_HEADER: Final = "X-API-Key"
 API_KEY_QUERY_PARAM: Final = "api_key"
 
 MUTATING_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-PROTECTED_PREFIXES: Final = ("/api/config",)
+PROTECTED_PREFIXES: Final = ("/api/config", "/api/immich")
 IMAGE_ENDPOINTS: Final = frozenset(
     {"/api/current.jpg", "/api/current.bin", "/api/current_dithered.png"}
 )

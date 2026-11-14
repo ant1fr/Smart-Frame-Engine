@@ -14,8 +14,10 @@ from pydantic import BaseModel, Field, JsonValue
 
 from app.core.config_models import FitMode
 from app.core.config_store import ConfigStore
+from app.core.history_store import HistoryStore
 from app.processor.fit import FocusRegion
 from app.processor.pipeline import RenderOptions, render_bytes
+from app.providers.base import ImageAsset
 from app.services.current_image import CurrentImageMeta, CurrentImageStore
 from app.services.delivery import DeliveryOutcome, DeliveryService
 
@@ -41,10 +43,12 @@ class DisplayService:
         config_store: ConfigStore,
         current_store: CurrentImageStore,
         delivery: DeliveryService,
+        history: HistoryStore,
     ) -> None:
         self._config_store = config_store
         self._current = current_store
         self._delivery = delivery
+        self._history = history
         self._render_lock = asyncio.Lock()
 
     async def display_bytes(
@@ -73,6 +77,29 @@ class DisplayService:
             await self._delivery.submit(result.bin, source=source, title=title) if push else None
         )
         return DisplayResult(image=meta, delivery=delivery)
+
+    async def display_asset(
+        self, asset: ImageAsset, *, fit: FitMode | None = None, push: bool = True
+    ) -> DisplayResult:
+        """Display a provider asset and record it in the anti-repeat history.
+
+        The fit mode is the explicit ``fit``, else the asset's recommended one, else the
+        configured default. The history entry is written only after rendering succeeded.
+
+        Raises:
+            InvalidImageError: If the asset's bytes are not a supported image.
+        """
+        result = await self.display_bytes(
+            asset.data,
+            source=asset.source,
+            title=asset.title,
+            details=asset.details,
+            fit=fit or asset.recommended_fit,
+            regions=asset.regions,
+            push=push,
+        )
+        await self._history.record(asset.history_key, asset.source)
+        return result
 
     async def push_current(self) -> DeliveryOutcome:
         """Send the current image to the frame now, whatever the power mode.
