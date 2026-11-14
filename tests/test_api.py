@@ -36,6 +36,7 @@ def test_data_dir_is_created(make_client: ClientFactory, data_dir: Path) -> None
     make_client()
     assert data_dir.is_dir()
     assert (data_dir / "cache").is_dir()
+    assert (data_dir / "queue").is_dir()
 
 
 def test_config_read_update_reset_flow(make_client: ClientFactory, data_dir: Path) -> None:

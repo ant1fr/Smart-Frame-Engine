@@ -30,6 +30,10 @@ KEY = "s3cret-key"
         ("HEAD", "/api/current.jpg", True, False),
         ("GET", "/api/current.jpg", False, True),
         ("GET", "/api/current.bin", False, True),
+        ("GET", "/api/current_dithered.png", True, False),
+        ("GET", "/api/current_dithered.png", False, True),
+        ("GET", "/api/fraimic/info", True, False),
+        ("POST", "/api/fraimic/wakeup", True, True),
     ],
 )
 def test_requires_api_key_rules(

@@ -49,6 +49,9 @@ jobs:
       - name: Pytest
         run: pytest
 
+      - name: Pytest (slow / performance)
+        run: pytest -m slow
+
   docker-build:
     name: Docker build & smoke test
     runs-on: ubuntu-latest
