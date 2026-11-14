@@ -278,3 +278,22 @@ def test_safe_margin_validation() -> None:
         config(display={"safe_margin_px": -1})
     with pytest.raises(ValueError):
         config(display={"safe_margin_px": 251})
+
+
+# --- eInk profiles -------------------------------------------------------------------------------
+def test_photo_profile_reaches_the_render_options_and_changes_the_output() -> None:
+    official = RenderOptions.from_config(config())
+    photo = RenderOptions.from_config(config(eink={"profile": "photo"}))
+    assert official.eink.edge_filters is True and official.eink.saturation == 1.2
+    assert photo.eink.edge_filters is False and photo.eink.saturation == 0.85
+
+    rng = np.random.default_rng(41)
+    image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))
+    assert not np.array_equal(
+        np.asarray(compose(image, official)), np.asarray(compose(image, photo))
+    )
+
+
+def test_profile_can_be_forced_when_building_options() -> None:
+    forced = RenderOptions.from_config(config(eink={"profile": "photo"}), eink_profile="official")
+    assert forced.eink.saturation == 1.2 and forced.eink.edge_filters is True

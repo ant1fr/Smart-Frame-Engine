@@ -26,7 +26,7 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image, ImageOps
 
-from app.core.config_models import EinkConfig, FitMode, PanelSpec, RuntimeConfig
+from app.core.config_models import EinkConfig, EinkProfile, FitMode, PanelSpec, RuntimeConfig
 from app.core.security import verify_image_bytes
 from app.processor.dither import dither
 from app.processor.enhance import enhance
@@ -90,8 +90,20 @@ class RenderOptions:
             raise ValueError("safe_margin_px must be between 0 and a quarter of the short side")
 
     @classmethod
-    def from_config(cls, config: RuntimeConfig, *, fit: FitMode | None = None) -> RenderOptions:
-        """Build options from the effective config, optionally overriding the fit mode."""
+    def from_config(
+        cls,
+        config: RuntimeConfig,
+        *,
+        fit: FitMode | None = None,
+        eink_profile: EinkProfile | None = None,
+    ) -> RenderOptions:
+        """Build options from the effective config.
+
+        Args:
+            config: Effective runtime configuration.
+            fit: Overrides the default fit mode.
+            eink_profile: Overrides ``eink.profile`` (e.g. posters always use ``official``).
+        """
         rotation: Rotation = (
             0 if config.display.orientation == "portrait" else config.display.landscape_rotation
         )
@@ -101,7 +113,7 @@ class RenderOptions:
             rotation=rotation,
             fit=fit or config.display.default_fit,
             background=config.display.contain_background,
-            eink=config.eink,
+            eink=config.eink.effective(eink_profile),
             safe_margin_px=config.display.safe_margin_px,
         )
 

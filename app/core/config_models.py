@@ -29,6 +29,7 @@ PanelModel = Literal["133", "315"]
 Orientation = Literal["portrait", "landscape"]
 FitMode = Literal["smart_crop", "contain"]
 DitherAlgorithm = Literal["atkinson", "floyd_steinberg"]
+EinkProfile = Literal["official", "photo"]
 PowerMode = Literal["continuous", "deepsleep"]
 
 
@@ -280,9 +281,27 @@ class DisplayConfig(_Section):
     )
 
 
+#: Values of the ``photo`` profile, tuned on a real Spectra 6 panel with indoor photos: the
+#: official edge-enhance/sharpen chain and +20% saturation/contrast make photos look
+#: outlined, over-saturated and grainy. Dithering stays as configured.
+PHOTO_PROFILE: Final[dict[str, float | bool]] = {
+    "brightness": 1.0,
+    "contrast": 1.0,
+    "saturation": 0.85,
+    "sharpness": 0.8,
+    "edge_filters": False,
+}
+
+
 class EinkConfig(_Section):
     """Color eInk optimization. Defaults mirror the official Fraimic converter."""
 
+    profile: EinkProfile = Field(
+        default="official",
+        description="official = the values below (defaults = official converter); photo = softer "
+        "preset for photographs that overrides brightness, contrast, saturation, sharpness "
+        "and edge_filters",
+    )
     brightness: float = Field(default=1.1, ge=0.1, le=3.0, description="1.0 = unchanged")
     contrast: float = Field(default=1.2, ge=0.1, le=3.0, description="1.0 = unchanged")
     saturation: float = Field(default=1.2, ge=0.0, le=3.0, description="1.0 = unchanged")
@@ -294,6 +313,16 @@ class EinkConfig(_Section):
         default="atkinson",
         description="atkinson = tuned color metric (official default); floyd_steinberg = classic",
     )
+
+    def effective(self, profile: EinkProfile | None = None) -> EinkConfig:
+        """The values actually used for rendering after applying the profile.
+
+        Args:
+            profile: Overrides :attr:`profile` (e.g. a poster source forcing ``official``).
+        """
+        if (profile or self.profile) == "official":
+            return self
+        return self.model_copy(update=PHOTO_PROFILE)
 
 
 class SourceRule(BaseModel):

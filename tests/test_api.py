@@ -136,3 +136,11 @@ def test_config_api_masks_immich_account_keys(make_client: ClientFactory) -> Non
     )
     assert rejected.status_code == 422
     assert "home-secret-key-1111" not in rejected.text
+
+
+def test_eink_profile_is_configurable_over_the_api(make_client: ClientFactory) -> None:
+    client = make_client()
+    assert client.get("/api/config").json()["config"]["eink"]["profile"] == "official"
+    assert client.put("/api/config", json={"eink": {"profile": "photo"}}).status_code == 200
+    assert client.get("/api/config").json()["config"]["eink"]["profile"] == "photo"
+    assert client.put("/api/config", json={"eink": {"profile": "poster"}}).status_code == 422

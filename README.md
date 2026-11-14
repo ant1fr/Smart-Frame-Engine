@@ -35,6 +35,14 @@ about 0.7 s (13.3") / 1.1 s (31.5") instead of ~40 s. Landscape mode rotates the
 into the panel's portrait buffer *before* dithering, like the official `--fit rotate`,
 so its `.bin` is byte-identical too. HEIC/HEIF (iPhone) images decode natively.
 
+**Photos vs the official look.** The official settings (contrast and saturation +20%,
+edge-enhance/sharpen chain) suit posters and graphics, but make dim indoor photos look
+outlined, over-saturated and grainy on the panel. Set `eink.profile` to `photo` for a softer
+result (no edge filters, saturation 0.85, sharpness 0.8, brightness and contrast 1.0; dithering
+stays as configured). `official` (default) keeps the values of the `eink` fields, whose
+defaults are the official converter's. Tested on a real 13.3" panel: lifting brightness,
+white-balance correction and dither jitter did not improve on it.
+
 If a mat or bezel hides the panel edges, set `display.safe_margin_px` (default `0`):
 the picture is inset by that many pixels on every side and the margin is filled with
 `display.contain_background`.

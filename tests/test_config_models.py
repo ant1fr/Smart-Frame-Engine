@@ -182,3 +182,32 @@ def test_dump_config_reveals_or_masks_secrets() -> None:
     assert "immich-secret-key-1234" not in str(masked)
     assert masked["tmdb"]["api_key"] == MASK_PREFIX
     assert RuntimeConfig.model_validate(revealed) == config
+
+
+# --- eInk profiles -----------------------------------------------------------------------------
+def test_official_profile_is_the_default_and_leaves_values_untouched() -> None:
+    from app.core.config_models import EinkConfig
+
+    config = EinkConfig(contrast=1.4, dither="floyd_steinberg")
+    assert config.profile == "official"
+    assert config.effective() is config
+
+
+def test_photo_profile_overrides_the_five_tuning_fields_but_keeps_dithering() -> None:
+    from app.core.config_models import PHOTO_PROFILE, EinkConfig
+
+    config = EinkConfig(profile="photo", contrast=1.5, dither="floyd_steinberg")
+    effective = config.effective()
+    for name, value in PHOTO_PROFILE.items():
+        assert getattr(effective, name) == value
+    assert effective.dither == "floyd_steinberg"
+    assert effective.edge_filters is False and effective.saturation == 0.85
+    assert config.contrast == 1.5  # the stored configuration is not modified
+
+
+def test_effective_profile_can_be_forced_per_source() -> None:
+    from app.core.config_models import EinkConfig
+
+    photo = EinkConfig(profile="photo")
+    assert photo.effective("official") is photo
+    assert EinkConfig().effective("photo").saturation == 0.85
