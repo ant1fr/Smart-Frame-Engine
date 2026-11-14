@@ -13,19 +13,16 @@ from app.api.deps import (
     DisplayServiceDep,
     ImmichProviderDep,
     PeopleDirectoryDep,
+    SchedulerDep,
 )
+from app.api.errors import PROVIDER_ERROR_RESPONSES, provider_http_error
 from app.core.auth import api_key_scheme
 from app.core.security import InvalidImageError
-from app.providers.base import (
-    InvalidSelectionError,
-    NoCandidateError,
-    ProviderError,
-    ProviderNotConfiguredError,
-    ProviderUnavailableError,
-)
+from app.providers.base import InvalidSelectionError, ProviderError
 from app.providers.immich.models import AlbumInfo, ImmichDisplayRequest
 from app.providers.immich.people import PeopleSnapshot, resolve_person
 from app.services.display import DisplayResult
+from app.services.scheduler import immich_rule
 
 display_router = APIRouter(
     prefix="/api/display", tags=["display"], dependencies=[Security(api_key_scheme)]
@@ -37,25 +34,9 @@ AccountsQuery = Annotated[
 ]
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
-    404: {"description": "No eligible photo matched (or all are on the anti-repeat cooldown)"},
+    **PROVIDER_ERROR_RESPONSES,
     409: {"description": "No Immich account is configured"},
-    422: {"description": "Unknown or ambiguous person, album or account"},
-    502: {"description": "Immich failed or rejected the API key"},
-    504: {"description": "Immich did not respond in time"},
 }
-
-
-def http_error(exc: ProviderError) -> HTTPException:
-    """Map a provider error to an HTTP error (messages never contain secrets)."""
-    if isinstance(exc, ProviderNotConfiguredError):
-        return HTTPException(status_code=409, detail=str(exc))
-    if isinstance(exc, InvalidSelectionError):
-        return HTTPException(status_code=422, detail=str(exc))
-    if isinstance(exc, NoCandidateError):
-        return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, ProviderUnavailableError):
-        return HTTPException(status_code=504 if exc.timeout else 502, detail=str(exc))
-    return HTTPException(status_code=500, detail="Image provider error")
 
 
 @display_router.post(
@@ -65,25 +46,32 @@ def http_error(exc: ProviderError) -> HTTPException:
     summary="Select and display an Immich photo",
 )
 async def display_immich(
-    request: ImmichDisplayRequest, provider: ImmichProviderDep, display: DisplayServiceDep
+    request: ImmichDisplayRequest,
+    provider: ImmichProviderDep,
+    display: DisplayServiceDep,
+    scheduler: SchedulerDep,
 ) -> DisplayResult:
     """Pick a photo from Immich, render it (face-aware crop) and make it the current image.
 
     People are plain names resolved per account; ``persons``, ``match_mode``, ``album_*``
     and ``always_include`` fall back to the ``immich`` section of the configuration.
     The photo is recorded in the history so it is not shown again within
-    ``immich.anti_repeat_days``.
+    ``immich.anti_repeat_days``. When pushed to the frame, the request becomes the rule
+    replayed by ``POST /api/refresh`` and the scheduler, and the refresh timer restarts.
     """
     try:
         asset = await provider.fetch(request)
     except ProviderError as exc:
-        raise http_error(exc) from exc
+        raise provider_http_error(exc) from exc
     try:
-        return await display.display_asset(asset, fit=request.fit, push=request.push_to_fraimic)
+        result = await display.display_asset(asset, fit=request.fit, push=request.push_to_fraimic)
     except InvalidImageError as exc:
         raise HTTPException(
             status_code=502, detail="Immich returned an image that cannot be decoded"
         ) from exc
+    if request.push_to_fraimic:
+        await scheduler.record_manual(immich_rule(request))
+    return result
 
 
 class AlbumsResponse(BaseModel):
@@ -103,7 +91,7 @@ async def list_albums(
     try:
         albums, errors = await provider.albums(accounts)
     except ProviderError as exc:
-        raise http_error(exc) from exc
+        raise provider_http_error(exc) from exc
     return AlbumsResponse(albums=albums, errors=errors)
 
 
@@ -164,7 +152,7 @@ async def _people_response(
     try:
         names = list(directory.account_names(accounts))
     except ProviderError as exc:
-        raise http_error(exc) from exc
+        raise provider_http_error(exc) from exc
     snapshots = await directory.snapshot(names, refresh=refresh)
     aliases = config.config.immich.person_aliases
     return PeopleResponse(accounts=[_view(snapshot, aliases) for snapshot in snapshots])
