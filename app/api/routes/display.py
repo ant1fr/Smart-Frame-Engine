@@ -31,7 +31,7 @@ def _clean_filename(name: str | None) -> str | None:
 
 _UPLOAD_RESPONSES: dict[int | str, dict[str, Any]] = {
     413: {"description": "File larger than MAX_UPLOAD_MB"},
-    415: {"description": "Not a supported image (JPEG, PNG, WebP, GIF, TIFF, BMP)"},
+    415: {"description": "Not a supported image (JPEG, PNG, WebP, GIF, TIFF, BMP, HEIC)"},
 }
 
 
