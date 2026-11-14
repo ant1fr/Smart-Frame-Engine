@@ -47,8 +47,8 @@ async def test_precedence_default_env_config_and_reset(config_path: Path) -> Non
 
 async def test_overrides_are_sparse_and_canonical(config_path: Path) -> None:
     store = make_store(config_path)
-    await store.update({"immich": {"url": "http://immich.local:2283/", "persons": ["A", " A "]}})
-    assert saved(config_path) == {"immich": {"url": "http://immich.local:2283", "persons": ["A"]}}
+    await store.update({"immich": {"album": " Family ", "persons": ["A", " A "]}})
+    assert saved(config_path) == {"immich": {"album": " Family ", "persons": ["A"]}}
 
 
 async def test_unchanged_values_do_not_freeze_env_fallback(config_path: Path) -> None:
@@ -61,17 +61,17 @@ async def test_unchanged_values_do_not_freeze_env_fallback(config_path: Path) ->
 
 
 async def test_masked_secret_round_trip_keeps_value(config_path: Path) -> None:
-    store = make_store(config_path, {"immich": {"api_key": "env-immich-secret-0001"}})
+    store = make_store(config_path, {"tmdb": {"api_key": "env-tmdb-secret-0001"}})
     view = store.public_view()
-    assert view["config"]["immich"]["api_key"] == MASK_PREFIX + "0001"
+    assert view["config"]["tmdb"]["api_key"] == MASK_PREFIX + "0001"
 
     await store.update(view["config"])
-    assert store.config.immich.api_key.get_secret_value() == "env-immich-secret-0001"
+    assert store.config.tmdb.api_key.get_secret_value() == "env-tmdb-secret-0001"
     assert not config_path.exists() or saved(config_path) == {}
 
-    await store.update({"immich": {"api_key": "new-key"}})
-    assert store.config.immich.api_key.get_secret_value() == "new-key"
-    assert saved(config_path) == {"immich": {"api_key": "new-key"}}
+    await store.update({"tmdb": {"api_key": "new-key"}})
+    assert store.config.tmdb.api_key.get_secret_value() == "new-key"
+    assert saved(config_path) == {"tmdb": {"api_key": "new-key"}}
     assert "new-key" in store.secret_values()
 
 
@@ -164,3 +164,97 @@ async def test_listeners_are_notified(config_path: Path) -> None:
     await store.update({"eink": {"contrast": 1.7}})
     await store.reset()
     assert seen == [1.7, 1.2]
+
+
+# --- Immich accounts: nested secrets -------------------------------------------------------
+ACCOUNTS = {
+    "home": {"url": "http://immich.local:2283", "api_key": "home-secret-key-1111"},
+    "partner": {"url": "https://photos.example.org", "api_key": "partner-secret-key-2222"},
+}
+
+
+async def test_account_keys_are_masked_but_stored_and_logged_as_secrets(config_path: Path) -> None:
+    store = make_store(config_path)
+    await store.update({"immich": {"accounts": ACCOUNTS}})
+
+    view = store.public_view()["config"]["immich"]["accounts"]
+    assert view["home"]["api_key"] == MASK_PREFIX + "1111"
+    assert view["partner"]["url"] == "https://photos.example.org"
+    assert "secret-key" not in str(store.public_view())
+    assert saved(config_path)["immich"]["accounts"]["home"]["api_key"] == "home-secret-key-1111"
+    assert {"home-secret-key-1111", "partner-secret-key-2222"} <= set(store.secret_values())
+
+
+async def test_masked_account_keys_round_trip_and_survive_removals(config_path: Path) -> None:
+    store = make_store(config_path)
+    await store.update({"immich": {"accounts": ACCOUNTS}})
+
+    form = store.public_view()["config"]["immich"]
+    await store.update({"immich": form})  # the UI sends the masked view back
+    assert store.config.immich.accounts["home"].api_key.get_secret_value() == "home-secret-key-1111"
+
+    form["accounts"].pop("partner")  # omitting an account deletes it
+    form["accounts"]["home"]["url"] = "http://immich.lan:2283"
+    await store.update({"immich": form})
+    assert set(store.config.immich.accounts) == {"home"}
+    home = store.config.immich.accounts["home"]
+    assert home.url == "http://immich.lan:2283"
+    assert home.api_key.get_secret_value() == "home-secret-key-1111"
+
+    await store.update({"immich": {"accounts": {"home": {"url": "http://immich.lan:2283"}}}})
+    assert store.config.immich.accounts["home"].api_key.get_secret_value() == "home-secret-key-1111"
+
+
+async def test_new_account_without_a_real_key_is_rejected(config_path: Path) -> None:
+    store = make_store(config_path)
+    for bad in (
+        {"url": "http://immich"},
+        {"url": "http://immich", "api_key": MASK_PREFIX + "1111"},
+    ):
+        with pytest.raises(ConfigValidationError):
+            await store.update({"immich": {"accounts": {"new": bad}}})
+    assert not config_path.exists()
+
+
+async def test_env_seed_account_and_config_json_precedence(config_path: Path) -> None:
+    seed = {"immich": {"accounts": {"default": ACCOUNTS["home"]}}}
+    store = make_store(config_path, seed)
+    assert set(store.config.immich.accounts) == {"default"}
+    assert store.sources()["immich.accounts"] == "env"
+
+    await store.update({"immich": {"accounts": {"partner": ACCOUNTS["partner"]}}})
+    assert set(store.config.immich.accounts) == {"partner"}  # config.json always wins
+    assert store.sources()["immich.accounts"] == "config"
+
+
+def test_legacy_single_account_settings_are_migrated(config_path: Path) -> None:
+    config_path.write_text(
+        json.dumps(
+            {
+                "immich": {
+                    "url": "http://immich.local:2283",
+                    "api_key": "legacy-secret-key-9999",
+                    "album": "Family",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = make_store(config_path)
+    store.load()
+    account = store.config.immich.accounts["default"]
+    assert account.url == "http://immich.local:2283"
+    assert account.api_key.get_secret_value() == "legacy-secret-key-9999"
+    assert store.config.immich.album == "Family"
+    assert "legacy-secret-key-9999" in store.secret_values()
+
+
+def test_incomplete_legacy_settings_are_dropped(config_path: Path) -> None:
+    config_path.write_text(
+        json.dumps({"immich": {"url": "http://immich.local:2283", "album": "Family"}}),
+        encoding="utf-8",
+    )
+    store = make_store(config_path)
+    store.load()
+    assert store.config.immich.accounts == {}
+    assert store.config.immich.album == "Family"

@@ -113,3 +113,26 @@ def test_index_redirects_to_docs(make_client: ClientFactory) -> None:
     response = make_client().get("/", follow_redirects=False)
     assert response.status_code == 307
     assert response.headers["location"] == "/docs"
+
+
+def test_config_api_masks_immich_account_keys(make_client: ClientFactory) -> None:
+    client = make_client()
+    accounts = {"home": {"url": "http://immich.local:2283", "api_key": "home-secret-key-1111"}}
+    response = client.put("/api/config", json={"immich": {"accounts": accounts}})
+    assert response.status_code == 200
+    assert "home-secret-key-1111" not in response.text
+    shown = response.json()["config"]["immich"]["accounts"]["home"]
+    assert shown["api_key"].endswith("1111") and shown["api_key"].startswith("•")
+
+    # Sending the masked view back must not overwrite the stored key.
+    again = client.put("/api/config", json={"immich": response.json()["config"]["immich"]})
+    assert again.status_code == 200
+    status = client.get("/api/status").json()
+    assert status["services"]["immich"] is True
+    assert "home-secret-key-1111" not in client.get("/api/status").text
+
+    rejected = client.put(
+        "/api/config", json={"immich": {"accounts": {"new": {"url": "http://immich.lan"}}}}
+    )
+    assert rejected.status_code == 422
+    assert "home-secret-key-1111" not in rejected.text

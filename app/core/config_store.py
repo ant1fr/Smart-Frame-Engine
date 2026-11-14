@@ -26,6 +26,7 @@ from app.core.config_models import (
     RuntimeConfig,
     dump_config,
     is_masked,
+    nested_secret_values,
     secret_field_paths,
     section_fields,
 )
@@ -156,6 +157,7 @@ class ConfigStore:
             raw = getattr(getattr(self._config, section), name).get_secret_value()
             if raw:
                 values.append(raw)
+        values.extend(nested_secret_values(self._config))
         return values
 
     def add_listener(self, listener: ConfigListener) -> None:
@@ -169,7 +171,7 @@ class ConfigStore:
         Invalid entries (e.g. left over from an older version) are logged and ignored in
         memory; the file is rewritten without them on the next successful save.
         """
-        raw = read_json(self._path, dict)
+        raw = self._migrate_legacy(read_json(self._path, dict))
         overrides = self._sanitize_shape(raw)
         overrides = self._prune_invalid(overrides)
         self._overrides = overrides
@@ -197,6 +199,7 @@ class ConfigStore:
         """
         normalized = self._normalize_patch(patch)
         async with self._lock:
+            self._restore_masked_account_keys(normalized)
             candidate = _merge(self._overrides, normalized)
             config = self._build(candidate)
             canonical = dump_config(config, reveal_secrets=True)
@@ -261,6 +264,43 @@ class ConfigStore:
                 await listener(config)
             except Exception:
                 logger.exception("Configuration listener %r failed", listener)
+
+    def _restore_masked_account_keys(self, normalized: Overrides) -> None:
+        """Let a masked or omitted account ``api_key`` keep the stored key of that account.
+
+        ``immich.accounts`` is replaced as a whole, so a client that sends the masked view
+        back (or omits the key) must not wipe the secrets. A new account without a real
+        key is left without one and fails validation.
+        """
+        accounts = normalized.get("immich", {}).get("accounts")
+        if not isinstance(accounts, dict):
+            return
+        for name, account in accounts.items():
+            if not isinstance(account, dict):
+                continue
+            key = account.get("api_key")
+            if key is not None and not is_masked(key):
+                continue
+            account.pop("api_key", None)
+            existing = self._config.immich.accounts.get(name)
+            if existing is not None:
+                account["api_key"] = existing.api_key.get_secret_value()
+
+    @staticmethod
+    def _migrate_legacy(raw: Any) -> Any:
+        """Move the pre-accounts ``immich.url``/``api_key`` pair into ``accounts.default``."""
+        if not isinstance(raw, dict) or not isinstance(raw.get("immich"), dict):
+            return raw
+        section = dict(raw["immich"])
+        url, key = section.pop("url", None), section.pop("api_key", None)
+        if url is None and key is None:
+            return raw
+        if url and key and "accounts" not in section:
+            section["accounts"] = {"default": {"url": url, "api_key": key}}
+            logger.info("Migrated saved immich.url/api_key to immich.accounts.default")
+        else:
+            logger.warning("Ignoring incomplete legacy immich.url/api_key settings")
+        return {**raw, "immich": section}
 
     @staticmethod
     def _normalize_patch(patch: Mapping[str, Any]) -> Overrides:

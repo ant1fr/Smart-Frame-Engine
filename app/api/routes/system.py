@@ -123,7 +123,7 @@ async def status(
             timezone=config.scheduler.timezone,
         ),
         services=ServiceConfigured(
-            immich=bool(config.immich.url and config.immich.api_key.get_secret_value()),
+            immich=bool(config.immich.accounts),
             tmdb=bool(config.tmdb.api_key.get_secret_value()),
         ),
     )

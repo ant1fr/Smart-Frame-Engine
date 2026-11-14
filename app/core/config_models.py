@@ -77,14 +77,61 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
-class ImmichConfig(_Section):
-    """Connection and default selection filters for the Immich provider."""
+ACCOUNT_NAME_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
-    url: str = Field(default="", description="Immich base URL, e.g. http://immich.local:2283")
-    api_key: SecretStr = Field(default=SecretStr(""), description="Immich API key")
+
+def _clean_names(value: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for name in value:
+        stripped = name.strip()
+        if stripped and stripped not in cleaned:
+            cleaned.append(stripped)
+    return cleaned
+
+
+class ImmichAccountConfig(_Section):
+    """One Immich server/account (a family member or a shared library)."""
+
+    url: str = Field(description="Immich base URL, e.g. http://immich.local:2283")
+    api_key: SecretStr = Field(description="Immich API key of this account")
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        normalized = _normalize_http_base_url(value)
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("api_key")
+    @classmethod
+    def _validate_key(cls, value: SecretStr) -> SecretStr:
+        raw = value.get_secret_value().strip()
+        if not raw:
+            raise ValueError("must not be empty")
+        return SecretStr(raw)
+
+
+class ImmichConfig(_Section):
+    """Immich accounts and the default selection filters of the Immich provider."""
+
+    accounts: dict[str, ImmichAccountConfig] = Field(
+        default_factory=dict,
+        description="Immich accounts by name (IMMICH_URL/IMMICH_API_KEY seed one named 'default')",
+    )
     persons: list[str] = Field(default_factory=list, description="Default person names filter")
+    always_include: list[str] = Field(
+        default_factory=list,
+        description="Person names merged into every selection (e.g. children without a "
+        "Home Assistant presence), unless a request overrides them",
+    )
     match_mode: Literal["any", "all"] = Field(
         default="any", description="Match photos containing any or all of the persons"
+    )
+    person_aliases: dict[str, dict[str, list[str]]] = Field(
+        default_factory=dict,
+        description="Canonical person name -> account name -> person IDs or names in that "
+        "account (disambiguates duplicate or differently named people)",
     )
     album: str = Field(default="", description="Default album name filter (empty = all)")
     favorites_only: bool = Field(default=False, description="Only pick favorite assets")
@@ -92,20 +139,44 @@ class ImmichConfig(_Section):
     anti_repeat_days: int = Field(
         default=30, ge=0, le=3650, description="Do not show the same photo again within N days"
     )
+    people_cache_ttl_s: int = Field(
+        default=3600, ge=0, le=604_800, description="How long the people list is cached (0 = off)"
+    )
+    search_candidates: int = Field(
+        default=40, ge=5, le=200, description="Candidates fetched per search before picking one"
+    )
 
-    @field_validator("url")
+    @field_validator("accounts")
     @classmethod
-    def _validate_url(cls, value: str) -> str:
-        return _normalize_http_base_url(value)
+    def _validate_account_names(
+        cls, value: dict[str, ImmichAccountConfig]
+    ) -> dict[str, ImmichAccountConfig]:
+        for name in value:
+            if not ACCOUNT_NAME_RE.match(name):
+                raise ValueError(f"invalid account name {name!r}: use 1-32 letters, digits, - or _")
+        return value
 
-    @field_validator("persons")
+    @field_validator("persons", "always_include")
     @classmethod
     def _clean_persons(cls, value: list[str]) -> list[str]:
-        cleaned: list[str] = []
-        for name in value:
-            stripped = name.strip()
-            if stripped and stripped not in cleaned:
-                cleaned.append(stripped)
+        return _clean_names(value)
+
+    @field_validator("person_aliases")
+    @classmethod
+    def _clean_aliases(
+        cls, value: dict[str, dict[str, list[str]]]
+    ) -> dict[str, dict[str, list[str]]]:
+        cleaned: dict[str, dict[str, list[str]]] = {}
+        for canonical, per_account in value.items():
+            name = canonical.strip()
+            if not name:
+                raise ValueError("alias names must not be empty")
+            targets: dict[str, list[str]] = {}
+            for account, entries in per_account.items():
+                if not ACCOUNT_NAME_RE.match(account):
+                    raise ValueError(f"invalid account name {account!r} in alias {name!r}")
+                targets[account] = _clean_names(entries)
+            cleaned[name] = targets
         return cleaned
 
 
@@ -342,7 +413,21 @@ def dump_config(config: RuntimeConfig, *, reveal_secrets: bool) -> dict[str, dic
         secret: SecretStr = getattr(getattr(config, section), name)
         raw = secret.get_secret_value()
         data[section][name] = raw if reveal_secrets else mask_secret(raw)
+    for account_name, account in config.immich.accounts.items():
+        raw = account.api_key.get_secret_value()
+        data["immich"]["accounts"][account_name]["api_key"] = (
+            raw if reveal_secrets else mask_secret(raw)
+        )
     return data
+
+
+def nested_secret_values(config: RuntimeConfig) -> list[str]:
+    """Secrets stored inside nested structures (the Immich account API keys)."""
+    return [
+        raw
+        for account in config.immich.accounts.values()
+        if (raw := account.api_key.get_secret_value())
+    ]
 
 
 MASK_PREFIX: Final = "•" * 8
