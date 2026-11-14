@@ -387,14 +387,15 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
                 SOURCE,
                 c.taken_at,
                 within_hours=config.burst_cooldown_hours,
-                shown_within_days=config.anti_repeat_days,
+                shown_within_days=config.burst_cooldown_days,
             )
         ]
         if not eligible:
             raise NoCandidateError(
                 f"All {len(candidates)} matching photo(s) were shown within the last "
                 f"{config.anti_repeat_days} day(s) or were taken within "
-                f"{config.burst_cooldown_hours:g} h of one; retry with ignore_history "
+                f"{config.burst_cooldown_hours:g} h of a photo shown in the last "
+                f"{config.burst_cooldown_days} day(s); retry with ignore_history "
                 "or widen the filters"
             )
         return eligible

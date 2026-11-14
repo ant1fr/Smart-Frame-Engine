@@ -130,8 +130,10 @@ never dead-ends; the outcome is reported in the image details under `suitability
 
 **Burst cooldown.** The history stores each photo's capture time. After a photo was
 shown, others taken within `immich.burst_cooldown_hours` (default 2) of it are skipped for
-`anti_repeat_days`, so rapid-fire shots of one moment are not shown back-to-back
-(`0` disables it; `ignore_history` bypasses it).
+`immich.burst_cooldown_days` (default 3), so rapid-fire shots of one moment are not shown
+back-to-back while other photos of the same trip can still appear later (`0` for either
+setting disables it; `ignore_history` bypasses it). The exact-repeat memory stays
+`anti_repeat_days` (default 30).
 
 **Face-aware crop.** Face boxes of the requested people drive `smart_crop` (all faces are
 the fallback), padded by 25% for hair and shoulders. When two faces are too far apart for

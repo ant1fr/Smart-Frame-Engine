@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -232,17 +232,17 @@ def moment(hour: int, day: int = 14) -> str:
     return f"2024-07-{day:02d}T{hour:02d}:00:00.000Z"
 
 
-async def burst_env(tmp_path: Path, **immich: Any) -> tuple[Env, FakeImmich]:
+async def burst_env(
+    tmp_path: Path, shown_ago: timedelta = timedelta(0), **immich: Any
+) -> tuple[Env, FakeImmich]:
     fake = FakeImmich()
     fake.add_asset("a1", localDateTime=moment(10))
     fake.add_asset("a2", localDateTime=moment(11))  # 1 h after a1: same moment
     fake.add_asset("a3", localDateTime=moment(14))  # 4 h after
     fake.add_asset("a4", localDateTime=moment(10, day=20))  # another day
     env = Env(tmp_path, {"home": fake}, **immich)
-    # a1 was shown a moment ago, with its capture time recorded.
-    await env.history.record(
-        "sha1:sum-a1", "immich", taken_at=datetime(2024, 7, 14, 10, tzinfo=UTC)
-    )
+    # a1 was shown ``shown_ago`` ago (default: just now), with its capture time recorded.
+    await env.history.record("sha1:sum-a1", "immich", datetime.now(UTC) - shown_ago, taken_at=SHOT)
     return env, fake
 
 
@@ -282,11 +282,25 @@ async def test_all_candidates_in_a_burst_explains_why(tmp_path: Path) -> None:
         await fetch(env)
 
 
-async def test_burst_memory_follows_anti_repeat_days(tmp_path: Path) -> None:
-    env, fake = await burst_env(tmp_path, anti_repeat_days=0)
+async def test_burst_memory_has_its_own_duration(tmp_path: Path) -> None:
+    """a1 was shown 5 days ago: with the default 3-day burst memory a2 is free again."""
+    env, fake = await burst_env(tmp_path / "default", shown_ago=timedelta(days=5))
     with mocked(fake):
-        picked = {(await fetch(env)).details["asset_id"] for _ in range(4)}
-    assert "a2" in picked  # history memory off: neither the repeat nor the burst rule applies
+        assert "a2" in {(await fetch(env)).details["asset_id"] for _ in range(3)}
+
+    wide, fake = await burst_env(
+        tmp_path / "wide", shown_ago=timedelta(days=5), burst_cooldown_days=7
+    )
+    with mocked(fake):
+        picked = {(await fetch(wide)).details["asset_id"] for _ in range(3)}
+    assert "a2" not in picked  # a 7-day burst memory still remembers it
+
+
+async def test_zero_burst_days_disables_the_cooldown(tmp_path: Path) -> None:
+    env, fake = await burst_env(tmp_path, burst_cooldown_days=0)
+    with mocked(fake):
+        picked = {(await fetch(env)).details["asset_id"] for _ in range(3)}
+    assert "a2" in picked  # exact repeats stay excluded (anti_repeat_days), bursts are allowed
 
 
 async def test_the_fetched_asset_carries_its_capture_time(tmp_path: Path) -> None:

@@ -145,7 +145,14 @@ class ImmichConfig(_Section):
         ge=0,
         le=168,
         description="After a photo was shown, skip photos taken within this many hours of it "
-        "(rapid-fire shots of one moment); 0 = off. Uses anti_repeat_days as the memory.",
+        "(rapid-fire shots of one moment); 0 = off",
+    )
+    burst_cooldown_days: int = Field(
+        default=3,
+        ge=0,
+        le=365,
+        description="How long a shown photo blocks others from its burst (days); 0 = off. "
+        "Shorter than anti_repeat_days so other photos of the same trip can appear later",
     )
     people_cache_ttl_s: int = Field(
         default=3600, ge=0, le=604_800, description="How long the people list is cached (0 = off)"
