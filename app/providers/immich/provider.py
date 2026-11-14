@@ -8,6 +8,7 @@ photos still on the anti-repeat cooldown, then picks one at random.
 
 from __future__ import annotations
 
+import io
 import itertools
 import logging
 import random
@@ -17,13 +18,15 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import Final
 
+from PIL import Image
 from pydantic import JsonValue
 
-from app.core.config_models import ImmichConfig
+from app.core.config_models import ImmichConfig, QualityConfig
 from app.core.config_store import ConfigStore
 from app.core.history_store import HistoryStore
 from app.core.security import InvalidImageError, verify_image_bytes
 from app.processor.fit import FocusRegion
+from app.processor.quality import LEVELS, AssetFacts, ImageStats, measure, violations
 from app.providers.base import (
     BaseImageProvider,
     ImageAsset,
@@ -47,6 +50,7 @@ SOURCE: Final = "immich"
 MAX_QUERIES_PER_ACCOUNT: Final = 10
 MAX_PERSON_COMBINATIONS: Final = 8
 MAX_TITLE_PEOPLE: Final = 4
+THUMBNAIL_MAX_BYTES: Final = 2 * 1024 * 1024
 
 RAW_EXTENSIONS: Final = frozenset(
     {
@@ -82,6 +86,19 @@ class _Candidate:
     account: str
     asset: AssetDto
     key: str
+
+    @property
+    def taken_at(self) -> datetime | None:
+        return _parse_date(self.asset)
+
+    @property
+    def facts(self) -> AssetFacts:
+        exif = self.asset.exifInfo
+        return AssetFacts(
+            has_camera=bool(exif and (exif.make or exif.model)),
+            width=self.asset.width,
+            height=self.asset.height,
+        )
 
 
 def history_key(account: str, asset: AssetDto) -> str:
@@ -184,7 +201,14 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
 
         self._check_resolution(plan, results)
         candidates = self._merge(results)
-        chosen = self._choose(candidates, config, request.ignore_history)
+        eligible = self._eligible(candidates, config, request.ignore_history)
+        gate_config = self._config_store.config.quality
+        skip = (
+            request.mode == "album"
+            if request.skip_quality_gate is None
+            else (request.skip_quality_gate)
+        )
+        chosen, suitability = await self._select(eligible, gate_config, gate=not skip)
 
         account_result = results[chosen.account]
         async with self._gateway.client(chosen.account) as client:
@@ -192,6 +216,8 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
             data, quality = await self._download(client, asset)
             regions = await self._regions(client, asset, account_result.target_ids)
         title, details = build_title_and_details(chosen.account, asset, quality, len(regions))
+        if suitability is not None:
+            details["suitability"] = suitability
         return ImageAsset(
             data=data,
             source=SOURCE,
@@ -199,6 +225,7 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
             title=title,
             details=details,
             regions=tuple(regions),
+            taken_at=_parse_date(asset),
         )
 
     async def albums(
@@ -341,23 +368,101 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
                     merged.append(_Candidate(account, asset, key))
         return merged
 
-    def _choose(
+    def _eligible(
         self, candidates: list[_Candidate], config: ImmichConfig, ignore_history: bool
-    ) -> _Candidate:
+    ) -> list[_Candidate]:
+        """Candidates left after the archive filter, anti-repeat history and burst cooldown."""
         if config.exclude_archived:
             candidates = [c for c in candidates if not c.asset.isArchived]
         if not candidates:
             raise NoCandidateError("No photo matched the request")
-        recent = (
-            set() if ignore_history else self._history.recent_ids(SOURCE, config.anti_repeat_days)
-        )
-        eligible = [c for c in candidates if c.key not in recent]
+        if ignore_history:
+            return candidates
+        recent = self._history.recent_ids(SOURCE, config.anti_repeat_days)
+        eligible = [
+            c
+            for c in candidates
+            if c.key not in recent
+            and not self._history.near_recent(
+                SOURCE,
+                c.taken_at,
+                within_hours=config.burst_cooldown_hours,
+                shown_within_days=config.anti_repeat_days,
+            )
+        ]
         if not eligible:
             raise NoCandidateError(
                 f"All {len(candidates)} matching photo(s) were shown within the last "
-                f"{config.anti_repeat_days} day(s); retry with ignore_history or widen the filters"
+                f"{config.anti_repeat_days} day(s) or were taken within "
+                f"{config.burst_cooldown_hours:g} h of one; retry with ignore_history "
+                "or widen the filters"
             )
-        return self._rng.choice(eligible)
+        return eligible
+
+    async def _select(
+        self, eligible: list[_Candidate], quality: QualityConfig, *, gate: bool
+    ) -> tuple[_Candidate, dict[str, JsonValue] | None]:
+        """Pick one candidate, vetting random ones against the quality gate.
+
+        Candidates are inspected one at a time (thumbnail + metadata, never the original)
+        until one passes the strict rules; typically that is the first. If none of the
+        ``candidates_checked`` passes, the rules relax level by level over the inspected
+        ones, so a request never dead-ends. A candidate whose thumbnail cannot be read is
+        accepted as is (the gate never blocks on its own failures).
+        """
+        if not gate or not quality.enabled:
+            return self._rng.choice(eligible), None
+
+        pool = list(eligible)
+        inspected: list[tuple[_Candidate, ImageStats]] = []
+        rejected: list[str] = []
+        while pool and len(inspected) < quality.candidates_checked:
+            candidate = self._rng.choice(pool)
+            pool.remove(candidate)
+            stats = await self._inspect(candidate)
+            if stats is None:
+                return candidate, self._suitability(0, len(inspected) + 1, rejected, unchecked=True)
+            inspected.append((candidate, stats))
+            broken = violations(stats, candidate.facts, quality, 0)
+            if not broken:
+                return candidate, self._suitability(0, len(inspected), rejected)
+            rejected.append("+".join(broken))
+
+        for level in range(1, LEVELS + 1):
+            for candidate, stats in inspected:
+                if not violations(stats, candidate.facts, quality, level):
+                    logger.info(
+                        "Quality gate relaxed to level %d after %d rejections", level, len(rejected)
+                    )
+                    return candidate, self._suitability(level, len(inspected), rejected)
+        raise AssertionError("unreachable: the last relaxation level accepts everything")
+
+    @staticmethod
+    def _suitability(
+        level: int, checked: int, rejected: list[str], *, unchecked: bool = False
+    ) -> dict[str, JsonValue]:
+        info: dict[str, JsonValue] = {
+            "level": level,
+            "checked": checked,
+            "rejected": list(rejected),
+        }
+        if unchecked:
+            info["unchecked"] = True
+        return info
+
+    async def _inspect(self, candidate: _Candidate) -> ImageStats | None:
+        """Pixel statistics of a candidate's thumbnail, or ``None`` if it cannot be read."""
+        try:
+            async with self._gateway.client(candidate.account) as client:
+                data = await client.download(
+                    candidate.asset.id, variant="thumbnail", max_bytes=THUMBNAIL_MAX_BYTES
+                )
+            with Image.open(io.BytesIO(data)) as image:
+                image.load()
+                return measure(image)
+        except (ProviderUnavailableError, OSError, ValueError, Image.DecompressionBombError) as exc:
+            logger.info("Quality gate could not inspect a candidate (%s); accepting it", exc)
+            return None
 
     # --- download --------------------------------------------------------------------------------
     async def _download(self, client: ImmichClient, asset: AssetDto) -> tuple[bytes, str]:

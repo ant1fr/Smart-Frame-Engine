@@ -33,6 +33,8 @@ class AlbumDto(_Dto):
 
 
 class ExifDto(_Dto):
+    make: str | None = None
+    model: str | None = None
     city: str | None = None
     state: str | None = None
     country: str | None = None
@@ -142,7 +144,13 @@ class ImmichDisplayRequest(BaseModel):
         default=True, description="Send the result to the frame (or queue it in deepsleep mode)"
     )
     ignore_history: bool = Field(
-        default=False, description="Allow photos that were shown within anti_repeat_days"
+        default=False,
+        description="Allow photos shown within anti_repeat_days or taken close to one",
+    )
+    skip_quality_gate: bool | None = Field(
+        default=None,
+        description="Skip the photo suitability check. Default: skipped in album mode "
+        "(you picked the album yourself), checked otherwise",
     )
 
     @model_validator(mode="after")

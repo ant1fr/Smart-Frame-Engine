@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Generic, TypeVar
 
 from pydantic import JsonValue
@@ -60,6 +61,7 @@ class ImageAsset:
         recommended_fit: Fit mode this source prefers (e.g. posters: ``contain``); ``None``
             means "use the configured default".
         regions: Regions of interest (faces) in normalized coordinates, most relevant first.
+        taken_at: When the picture was taken, if known (burst cooldown in the history).
     """
 
     data: bytes = field(repr=False)
@@ -69,6 +71,7 @@ class ImageAsset:
     details: dict[str, JsonValue] = field(default_factory=dict)
     recommended_fit: FitMode | None = None
     regions: tuple[FocusRegion, ...] = ()
+    taken_at: datetime | None = None
 
 
 RequestT = TypeVar("RequestT", contravariant=True)
