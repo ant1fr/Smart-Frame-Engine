@@ -46,6 +46,8 @@ def test_reads_environment(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> N
     monkeypatch.setenv("FRAIMIC_PANEL", "315")
     monkeypatch.setenv("SCHEDULER_ENABLED", "true")
     monkeypatch.setenv("REFRESH_INTERVAL_HOURS", "3")
+    monkeypatch.setenv("QUIET_HOURS_START", " 22:30 ")
+    monkeypatch.setenv("QUIET_HOURS_END", "07:00")
     monkeypatch.setenv("TZ", "Europe/Paris")
 
     settings = EnvSettings(_env_file=None)
@@ -62,7 +64,13 @@ def test_reads_environment(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> N
             "accounts": {"default": {"url": "http://immich.local:2283", "api_key": "immich-key"}}
         },
         "fraimic": {"panel": "315"},
-        "scheduler": {"enabled": True, "interval_hours": 3.0, "timezone": "Europe/Paris"},
+        "scheduler": {
+            "enabled": True,
+            "interval_hours": 3.0,
+            "quiet_hours_start": "22:30",
+            "quiet_hours_end": "07:00",
+            "timezone": "Europe/Paris",
+        },
     }
     assert sorted(settings.secret_values()) == ["immich-key", "topsecret"]
 
@@ -84,3 +92,11 @@ def test_settings_are_frozen(make_settings: SettingsFactory) -> None:
     settings = make_settings()
     with pytest.raises(ValidationError):
         settings.port = 1234
+
+
+def test_blank_quiet_hours_are_unset(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> None:
+    monkeypatch.setenv("QUIET_HOURS_START", "")
+    monkeypatch.setenv("QUIET_HOURS_END", "  ")
+    settings = EnvSettings(_env_file=None, data_dir=data_dir)
+    assert settings.quiet_hours_start is None and settings.quiet_hours_end is None
+    assert "scheduler" not in settings.runtime_seed()

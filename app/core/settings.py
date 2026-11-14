@@ -79,6 +79,8 @@ class EnvSettings(BaseSettings):
     orientation: str | None = None
     scheduler_enabled: bool | None = None
     refresh_interval_hours: float | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
     tz: str | None = None
 
     @field_validator("root_path")
@@ -99,6 +101,8 @@ class EnvSettings(BaseSettings):
         "fraimic_power_mode",
         "fraimic_panel",
         "orientation",
+        "quiet_hours_start",
+        "quiet_hours_end",
         "tz",
         mode="before",
     )
@@ -193,6 +197,8 @@ class EnvSettings(BaseSettings):
             ("display", "orientation"): self.orientation,
             ("scheduler", "enabled"): self.scheduler_enabled,
             ("scheduler", "interval_hours"): self.refresh_interval_hours,
+            ("scheduler", "quiet_hours_start"): self.quiet_hours_start,
+            ("scheduler", "quiet_hours_end"): self.quiet_hours_end,
             ("scheduler", "timezone"): self.tz,
         }
         seed: dict[str, dict[str, Any]] = {}

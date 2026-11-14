@@ -135,6 +135,31 @@ def test_scheduler_quiet_hours_must_be_paired() -> None:
     assert SchedulerConfig(quiet_hours_start="", quiet_hours_end=" ").quiet_hours_start is None
 
 
+def test_scheduler_quiet_hours_must_differ() -> None:
+    with pytest.raises(ValidationError, match="must differ"):
+        SchedulerConfig(quiet_hours_start="07:00", quiet_hours_end="07:00")
+
+
+def test_scheduler_retry_and_pending_options() -> None:
+    config = SchedulerConfig()
+    assert config.skip_if_pending is True
+    assert config.retry_minutes == 15
+    assert SchedulerConfig(retry_minutes=1440, skip_if_pending=False).retry_minutes == 1440
+    for bad in (0, 1441):
+        with pytest.raises(ValidationError):
+            SchedulerConfig(retry_minutes=bad)
+
+
+def test_scheduler_pinned_rule() -> None:
+    config = SchedulerConfig.model_validate(
+        {"source_rule": {"kind": "immich", "params": {"persons": ["Alice"]}}}
+    )
+    assert config.source_rule is not None
+    assert config.source_rule.params == {"persons": ["Alice"]}
+    with pytest.raises(ValidationError):
+        SchedulerConfig.model_validate({"source_rule": {"kind": "ftp"}})
+
+
 @pytest.mark.parametrize("value", ["24:00", "7:30", "12:60"])
 def test_scheduler_rejects_bad_times(value: str) -> None:
     with pytest.raises(ValidationError):
