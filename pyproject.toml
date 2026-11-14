@@ -56,7 +56,7 @@ app = ["py.typed", "templates/*.html"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-extend-exclude = ["fraimic-docs"]
+extend-exclude = ["fraimic-docs", "tests/reference"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "S", "ANN", "RUF"]
@@ -83,7 +83,7 @@ markers = ["slow: long-running performance tests (run with `pytest -m slow`)"]
 python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
-exclude = ["fraimic-docs/", "build/"]
+exclude = ["fraimic-docs/", "build/", "tests/reference/"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
