@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 HISTORY_FORMAT_VERSION = 1
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Normalize a datetime to UTC (naive values are assumed to already be UTC)."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 class HistoryEntry(BaseModel):
     """One image that was displayed on the frame."""
 
@@ -25,6 +32,10 @@ class HistoryEntry(BaseModel):
     asset_id: str = Field(min_length=1, description="Provider-specific asset identifier")
     source: str = Field(min_length=1, description="Provider name, e.g. 'immich'")
     shown_at: AwareDatetime = Field(description="When the image was displayed (UTC)")
+    taken_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the picture was taken (UTC), if the source knows; enables burst cooldown",
+    )
 
 
 class HistoryStore:
@@ -69,7 +80,11 @@ class HistoryStore:
         self._entries = self._prune(entries, datetime.now(UTC))
 
     async def record(
-        self, asset_id: str, source: str, shown_at: datetime | None = None
+        self,
+        asset_id: str,
+        source: str,
+        shown_at: datetime | None = None,
+        taken_at: datetime | None = None,
     ) -> HistoryEntry:
         """Append an entry and persist the history.
 
@@ -77,10 +92,14 @@ class HistoryStore:
             asset_id: Provider-specific identifier of the displayed asset.
             source: Provider name.
             shown_at: Display time (timezone-aware); defaults to now.
+            taken_at: When the picture was taken (naive values are treated as UTC).
         """
         now = datetime.now(UTC)
         entry = HistoryEntry(
-            asset_id=asset_id, source=source, shown_at=(shown_at or now).astimezone(UTC)
+            asset_id=asset_id,
+            source=source,
+            shown_at=(shown_at or now).astimezone(UTC),
+            taken_at=_as_utc(taken_at),
         )
         async with self._lock:
             entries = sorted([*self._entries, entry], key=lambda item: item.shown_at)
@@ -99,6 +118,31 @@ class HistoryStore:
             for entry in self._entries
             if entry.source == source and entry.shown_at >= cutoff
         }
+
+    def near_recent(
+        self, source: str, taken_at: datetime | None, *, within_hours: float, shown_within_days: int
+    ) -> bool:
+        """Whether a recently shown picture was taken close to ``taken_at`` (a "burst").
+
+        Rapid-fire shots of one moment look alike; once one was shown, the others of the
+        same moment should not follow back-to-back.
+
+        Args:
+            source: Provider name.
+            taken_at: Capture time of the candidate (``None`` = unknown, never a burst).
+            within_hours: Maximum distance between the two capture times (either direction).
+            shown_within_days: Only entries displayed within this many days count.
+        """
+        moment = _as_utc(taken_at)
+        if moment is None or within_hours <= 0 or shown_within_days <= 0:
+            return False
+        shown_cutoff = datetime.now(UTC) - timedelta(days=shown_within_days)
+        window = timedelta(hours=within_hours)
+        return any(
+            entry.taken_at is not None and abs(entry.taken_at - moment) <= window
+            for entry in self._entries
+            if entry.source == source and entry.shown_at >= shown_cutoff
+        )
 
     def entries(self, limit: int | None = None) -> list[HistoryEntry]:
         """Entries, newest first, optionally limited."""
