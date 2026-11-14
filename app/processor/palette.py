@@ -77,7 +77,7 @@ def match_palette(rgb: npt.NDArray[np.int64]) -> npt.NDArray[np.intp]:
     )
     luma_diff = luma - PALETTE_LUMA
     total = 1.5 * rgb_dist + 0.60 * (luma_diff * luma_diff)
-    return np.argmin(total, axis=1)
+    return np.asarray(np.argmin(total, axis=1), dtype=np.intp)
 
 
 def indices_to_rgb(indices: npt.NDArray[np.uint8]) -> npt.NDArray[np.uint8]:
