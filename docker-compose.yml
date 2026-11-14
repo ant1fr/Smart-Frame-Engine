@@ -1,0 +1,16 @@
+services:
+  smart-frame-engine:
+    # Published multi-arch image; `build` is used as a fallback (or with `--build`).
+    image: ghcr.io/ant1fr/smart-frame-engine:latest
+    build: .
+    container_name: smart-frame-engine
+    restart: unless-stopped
+    # Run as the owner of ./data on the host (defaults to 1000:1000).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    volumes:
+      - ./data:/data
