@@ -160,8 +160,13 @@ class EnvSettings(BaseSettings):
 
     @property
     def cache_dir(self) -> Path:
-        """Directory holding ``current.jpg`` and ``current.bin``."""
+        """Directory holding the current rendered image (``current.jpg``, ``current.bin``)."""
         return self.data_dir / "cache"
+
+    @property
+    def queue_dir(self) -> Path:
+        """Directory holding the upload waiting for the frame (``pending.bin``)."""
+        return self.data_dir / "queue"
 
     def secret_values(self) -> list[str]:
         """All secret values provided through the environment (for log masking)."""
