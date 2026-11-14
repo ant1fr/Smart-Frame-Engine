@@ -161,3 +161,43 @@ def test_render_options_reject_inconsistent_frame() -> None:
             background=base.background,
             eink=base.eink,
         )
+
+
+def _official_rotate_image(image: Image.Image, background: tuple[int, int, int]) -> Image.Image:
+    panel = ref.Panel(1200, 1600)
+    return ref.pad_to_frame(
+        ref.enhance(ref.scale_to_frame(image, "rotate", panel)), panel, background
+    )
+
+
+def _landscape_options(**eink: Any) -> RenderOptions:
+    return RenderOptions.from_config(
+        config(
+            display={
+                "orientation": "landscape",
+                "landscape_rotation": 90,
+                "default_fit": "contain",
+                "contain_background": "white",
+            },
+            eink=eink,
+        )
+    )
+
+
+def test_landscape_composition_equals_official_rotate_fit() -> None:
+    rng = np.random.default_rng(21)
+    image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))
+    composed = compose(image, _landscape_options())
+    expected = _official_rotate_image(image, (255, 255, 255))
+    assert np.array_equal(np.rot90(np.asarray(composed)), np.asarray(expected))
+
+
+@pytest.mark.slow
+def test_landscape_bin_is_byte_identical_to_official_rotate_fit() -> None:
+    rng = np.random.default_rng(22)
+    base = rng.integers(0, 256, (36, 64, 3), dtype=np.uint8)
+    image = Image.fromarray(base).resize((1600, 900), Image.Resampling.BICUBIC)
+    options = _landscape_options(dither="atkinson")
+    official_indices = ref.quantize_atkinson_indexed(_official_rotate_image(image, (255, 255, 255)))
+    expected = ref.pack_el133uf1(ref.COLOR_CODES[official_indices]).tobytes()
+    assert render(image, options).bin == expected

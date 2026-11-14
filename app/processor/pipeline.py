@@ -6,9 +6,9 @@ Steps:
 2. Compose in *viewing* orientation (``frame_size`` honours portrait/landscape):
    ``smart_crop`` (fill, face-aware) or ``contain`` (fit + blur/black/white background),
    with the eInk enhancement applied to the picture only.
-3. Dither in viewing orientation (Atkinson or Floyd-Steinberg, tuned metric).
-4. Rotate the palette indices losslessly into the panel's native portrait buffer
-   (``landscape_rotation`` degrees counter-clockwise) and pack the ``.bin``.
+3. Rotate the composition into the panel's native portrait buffer (``landscape_rotation``
+   degrees counter-clockwise), then dither it (Atkinson or Floyd-Steinberg, tuned metric).
+4. Pack the ``.bin``; the preview indices are rotated back to viewing orientation.
 
 Rendering is CPU-bound and synchronous; call it through ``asyncio.to_thread``.
 """
@@ -156,8 +156,15 @@ def render(
 ) -> RenderResult:
     """Compose, dither and encode ``image`` for the configured panel."""
     composed = compose(image.convert("RGB"), options, regions)
-    indices = dither(np.asarray(composed, dtype=np.uint8), options.eink.dither)
-    portrait = np.ascontiguousarray(np.rot90(indices, k=options.rotation // 90))
+    quarter_turns = options.rotation // 90
+    # Rotate *before* dithering, like the official converter's ``--fit rotate``: error
+    # diffusion scans the panel's native portrait buffer, so the ``.bin`` is byte-identical.
+    native_rgb = np.ascontiguousarray(
+        np.rot90(np.asarray(composed, dtype=np.uint8), k=quarter_turns)
+    )
+    portrait = dither(native_rgb, options.eink.dither)
+    # The preview indices stay in viewing orientation (a lossless inverse rotation).
+    indices = np.ascontiguousarray(np.rot90(portrait, k=-quarter_turns))
     return RenderResult(
         options=options,
         composed=composed,
