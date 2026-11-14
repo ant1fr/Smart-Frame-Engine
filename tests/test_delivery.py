@@ -208,6 +208,44 @@ async def test_deepsleep_worker_delivers_once_frame_answers(make_service: Servic
 
 
 @respx.mock
+async def test_failed_forced_push_reschedules_an_idle_deepsleep_worker(
+    make_service: ServiceFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the worker kept the sleep it computed *before* a failed forced push.
+
+    An idle deepsleep worker waits "until woken"; after ``POST /api/fraimic/push`` failed
+    against a sleeping frame nothing woke it, so the frame stayed unreachable for the
+    app even after it woke up.
+    """
+    info = respx.get(INFO_URL).mock(side_effect=httpx.ConnectTimeout("asleep"))
+    upload = respx.post(IMAGE_URL).respond(200)
+    service = make_service("deepsleep")
+    monkeypatch.setattr(service, "next_wait", lambda: None if service.pending is None else 0.05)
+    await service.start()
+    await asyncio.sleep(0.05)  # the worker is now sleeping on its idle timer
+
+    outcome = await service.submit(BIN_A, immediate=True)  # e.g. POST /api/fraimic/push
+    assert outcome.status == "queued"
+
+    info.mock(return_value=httpx.Response(200, json=INFO))  # the frame wakes up
+    await eventually(lambda: service.pending is None)  # no manual wake()
+    assert upload.call_count == 1
+
+
+@respx.mock
+async def test_retry_schedule_does_not_spin(
+    make_service: ServiceFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    info = respx.get(INFO_URL).mock(side_effect=httpx.ConnectTimeout("asleep"))
+    service = make_service("deepsleep")
+    monkeypatch.setattr(service, "next_wait", lambda: None if service.pending is None else 0.1)
+    await service.start()
+    await service.submit(BIN_A, immediate=True)
+    await asyncio.sleep(0.5)
+    assert 2 <= info.call_count <= 8  # roughly one probe per 0.1 s, never a hot loop
+
+
+@respx.mock
 async def test_wakeup_wait_delivers(make_service: ServiceFactory) -> None:
     respx.get(INFO_URL).respond(json=INFO)
     upload = respx.post(IMAGE_URL).respond(200)

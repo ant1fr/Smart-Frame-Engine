@@ -139,6 +139,7 @@ class DeliveryService:
         self._state_lock = asyncio.Lock()  # pending files + in-memory pending state
         self._upload_lock = asyncio.Lock()  # one upload at a time
         self._wake = asyncio.Event()
+        self._signalled = False  # an explicit wake-up (vs. a mere reschedule)
         self._task: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[DeliveryOutcome]] = set()
 
@@ -248,7 +249,7 @@ class DeliveryService:
         attempt_now = config.fraimic.power_mode == "continuous" if immediate is None else immediate
         if attempt_now:
             return await self.flush("force" if immediate else "submit")
-        self._wake.set()
+        self._signal()
         return DeliveryOutcome(status="queued", reason="submit", sha256=pending.sha256)
 
     async def flush(self, reason: DeliveryReason = "wakeup") -> DeliveryOutcome:
@@ -289,7 +290,7 @@ class DeliveryService:
                     await asyncio.to_thread(remove_quietly, self._bin_path, self._meta_path)
                     self._pending = None
                 else:
-                    self._wake.set()  # a newer image arrived during the upload
+                    self._signal()  # a newer image arrived during the upload
             logger.info("Delivered image %s to the frame (%s)", pending.sha256[:12], reason)
             return DeliveryOutcome(
                 status="delivered",
@@ -335,6 +336,15 @@ class DeliveryService:
 
     def wake(self) -> None:
         """Wake the worker so it re-evaluates immediately."""
+        self._signal()
+
+    def _signal(self) -> None:
+        """Explicit wake-up: the worker acts now (flush) instead of waiting for its timer."""
+        self._signalled = True
+        self._wake.set()
+
+    def _reschedule(self) -> None:
+        """The schedule changed (e.g. a failed attempt): recompute the sleep, do not flush."""
         self._wake.set()
 
     # --- Worker ---------------------------------------------------------------------------
@@ -354,18 +364,19 @@ class DeliveryService:
 
     async def _run(self) -> None:
         while True:
-            woken = False
+            timed_out = False
             try:
                 timeout = self.next_wait()
                 if timeout is None:
                     await self._wake.wait()
-                    woken = True
                 else:
                     await asyncio.wait_for(self._wake.wait(), timeout)
-                    woken = True
             except TimeoutError:
-                pass
+                timed_out = True
             self._wake.clear()
+            woken, self._signalled = self._signalled, False
+            if not timed_out and not woken:
+                continue  # only the schedule changed: recompute the sleep first
             try:
                 await self._tick(woken)
             except asyncio.CancelledError:
@@ -450,6 +461,7 @@ class DeliveryService:
         else:
             level = logging.INFO
         logger.log(level, "Frame delivery failed (%s, attempt %d): %s", reason, attempts, exc)
+        self._reschedule()  # the worker may be sleeping on a timer computed before this failure
 
     async def _refresh_quietly(self) -> DeliveryOutcome:
         with contextlib.suppress(FraimicError):
@@ -472,7 +484,7 @@ class DeliveryService:
                 )
                 await asyncio.to_thread(remove_quietly, self._bin_path, self._meta_path)
                 self._pending = None
-        self._wake.set()
+        self._signal()
 
     def _write_pending(self, data: bytes, pending: PendingUpload) -> None:
         atomic_write_bytes(self._bin_path, data)
