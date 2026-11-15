@@ -124,7 +124,8 @@ def test_upload_landscape_uses_rotated_frame(frame_client: Callable[..., TestCli
     body = upload(client, push=False).json()
     assert body["image"]["frame_size"] == [1600, 1200]
     assert body["image"]["rotation"] == 90
-    jpeg = Image.open(io.BytesIO(client.get("/api/current.jpg").content))
+    assert client.get("/api/current.jpg").status_code == 404  # not pushed: preview only
+    jpeg = Image.open(io.BytesIO(client.get("/api/preview.jpg").content))
     assert jpeg.size == (1600, 1200)
 
 
@@ -223,7 +224,8 @@ def test_force_push(frame_client: Callable[..., TestClient]) -> None:
 
     assert client.post("/api/fraimic/push").status_code == 409
     upload(client, push=False)
-    response = client.post("/api/fraimic/push")
+    assert client.post("/api/fraimic/push").status_code == 409  # only a preview exists
+    response = client.post("/api/fraimic/push", params={"from_preview": "true"})
     assert response.status_code == 200
     assert response.json()["status"] == "delivered"
     assert response.json()["reason"] == "force"
@@ -235,7 +237,7 @@ def test_force_push_with_unreachable_frame_queues(frame_client: Callable[..., Te
     respx.get(INFO_URL).mock(side_effect=httpx.ConnectError("down"))
     client = frame_client()
     upload(client, push=False)
-    response = client.post("/api/fraimic/push")
+    response = client.post("/api/fraimic/push", params={"from_preview": "true"})
     assert response.status_code == 202
     assert response.json()["status"] == "queued"
     assert client.get("/api/status").json()["delivery"]["pending"] is True
@@ -246,7 +248,7 @@ def test_force_push_refuses_image_for_other_panel(frame_client: Callable[..., Te
     client = frame_client()
     upload(client, push=False)
     assert client.put("/api/config", json={"fraimic": {"panel": "315"}}).status_code == 200
-    response = client.post("/api/fraimic/push")
+    response = client.post("/api/fraimic/push", params={"from_preview": "true"})
     assert response.status_code == 409
     assert "panel 133" in response.json()["detail"]
 
@@ -287,7 +289,8 @@ def test_new_mutating_routes_require_api_key(make_client: ClientFactory) -> None
     assert client.get("/api/current_dithered.png").status_code == 401
     assert client.get("/api/fraimic/info").status_code == 200
     assert upload(client, push=False, **{"X-API-Key": KEY}).status_code == 200
-    assert client.get("/api/current.bin", params={"api_key": KEY}).status_code == 200
+    assert client.get("/api/preview.jpg").status_code == 401
+    assert client.get("/api/preview.jpg", params={"api_key": KEY}).status_code == 200
 
 
 def test_status_before_any_image(make_client: ClientFactory) -> None:
@@ -321,3 +324,20 @@ def test_upload_accepts_heic(frame_client: Callable[..., TestClient]) -> None:
     response = upload(client, push=False, data=buffer.getvalue())
     assert response.status_code == 200, response.text
     assert response.json()["image"]["bin_size"] == 960_000
+
+
+def test_preview_endpoints_serve_the_latest_render(make_client: ClientFactory) -> None:
+    client = make_client()
+    assert client.get("/api/preview.jpg").status_code == 404
+    assert client.get("/api/preview_dithered.png").status_code == 404
+    body = upload(client, push=False).json()
+    assert body["delivery"] is None
+    assert body["image"]["pushed"] is False
+    jpeg = client.get("/api/preview.jpg")
+    assert jpeg.status_code == 200 and jpeg.headers["content-type"] == "image/jpeg"
+    etag = jpeg.headers["etag"]
+    assert client.get("/api/preview.jpg", headers={"If-None-Match": etag}).status_code == 304
+    png = client.get("/api/preview_dithered.png")
+    assert png.status_code == 200 and png.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert client.head("/api/preview.jpg").status_code == 200
+    assert client.get("/api/status").json()["current_image"] is None

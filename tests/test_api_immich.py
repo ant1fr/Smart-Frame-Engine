@@ -114,7 +114,7 @@ def test_display_uses_face_regions_for_the_crop(make_client: ClientFactory) -> N
     client = immich_client(make_client)
     with servers(fake, frame=False):
         assert show(client, persons=["Alice"], push_to_fraimic=False).status_code == 200
-    current = np.asarray(Image.open(io.BytesIO(client.get("/api/current.jpg").content)))
+    current = np.asarray(Image.open(io.BytesIO(client.get("/api/preview.jpg").content)))
     red = (current[..., 0] > 200) & (current[..., 1] < 80) & (current[..., 2] < 80)
     assert red.sum() > 1000  # the face is inside the 1200x1600 crop
 

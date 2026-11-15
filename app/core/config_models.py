@@ -199,12 +199,33 @@ class ImmichConfig(_Section):
 class TmdbConfig(_Section):
     """TMDB (The Movie Database) settings for HD movie and TV posters."""
 
-    api_key: SecretStr = Field(default=SecretStr(""), description="TMDB API key (v3)")
-    language: str = Field(
-        default="en-US", description="Preferred poster/metadata language, e.g. fr-FR or en-US"
+    api_key: SecretStr = Field(
+        default=SecretStr(""), description="TMDB API key (v3) or read access token (v4)"
     )
-    image_size: Literal["w1280", "original"] = Field(
-        default="original", description="Poster resolution to download"
+    language: str = Field(
+        default="fr-FR",
+        description="Preferred poster/metadata language and region, e.g. fr-FR or en-US "
+        "(regional posters first, then same language, textless, English)",
+    )
+    image_size: Literal["w780", "w1280", "original"] = Field(
+        default="w780",
+        description='Poster resolution to download (original is sharper on the 31.5" panel)',
+    )
+    ephemeral_ttl_minutes: int = Field(
+        default=180,
+        ge=1,
+        le=1440,
+        description="How long an ephemeral poster stays before the previous image returns",
+    )
+    hold_minutes: int | None = Field(
+        default=None,
+        ge=1,
+        le=10080,
+        description="Protect a pushed poster from scheduled refreshes for this long",
+    )
+    fallback_title_card: bool = Field(
+        default=True,
+        description="Render a title card when no poster can be found (else answer 404)",
     )
 
     @field_validator("language")
@@ -214,6 +235,38 @@ class TmdbConfig(_Section):
         if not _LANGUAGE_RE.match(value):
             raise ValueError("must look like 'en-US' or 'fr-FR'")
         return value
+
+
+class MusicConfig(_Section):
+    """Now-playing album covers (POST /api/display/now-playing)."""
+
+    enrich_artwork: bool = Field(
+        default=True,
+        description="Look up a high-resolution cover (Deezer, then MusicBrainz / Cover Art "
+        "Archive) when none is provided or it cannot be downloaded",
+    )
+    default_style: Literal["sleeve", "vinyl"] = Field(
+        default="sleeve", description="Album template style: sleeve, or vinyl (a record peeks out)"
+    )
+    default_ttl_minutes: int = Field(
+        default=10,
+        ge=1,
+        le=1440,
+        description="Cover lifetime when the request gives no duration or ttl",
+    )
+    ttl_grace_seconds: int = Field(
+        default=30,
+        ge=0,
+        le=3600,
+        description="Added to the remaining track time so the cover outlives short gaps",
+    )
+    deezer_enabled: bool = Field(default=True, description="Search covers on Deezer (no key)")
+    musicbrainz_enabled: bool = Field(
+        default=True, description="Fall back to MusicBrainz / Cover Art Archive"
+    )
+    lookup_cache_size: int = Field(
+        default=256, ge=0, le=10_000, description="Cover lookups remembered in memory (0 = off)"
+    )
 
 
 class FraimicConfig(_Section):
@@ -524,6 +577,7 @@ class RuntimeConfig(BaseModel):
 
     immich: ImmichConfig = Field(default_factory=ImmichConfig)
     tmdb: TmdbConfig = Field(default_factory=TmdbConfig)
+    music: MusicConfig = Field(default_factory=MusicConfig)
     fraimic: FraimicConfig = Field(default_factory=FraimicConfig)
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     eink: EinkConfig = Field(default_factory=EinkConfig)

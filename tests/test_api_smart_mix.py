@@ -204,7 +204,7 @@ def test_playlist_view(make_client: ClientFactory) -> None:
     )
     view = client.get("/api/smart-mix").json()
 
-    assert view["enabled"] and view["effective"] and view["supported_kinds"] == ["immich"]
+    assert view["enabled"] and view["effective"] and view["supported_kinds"] == ["immich", "tmdb"]
     assert [e["probability"] for e in view["entries"]] == [0.75, 0.25, 0.0]
     season = RuleContext(datetime.now(UTC), ZoneInfo("UTC")).season
     assert view["entries"][1]["resolved_params"]["clip_queries"] == [f"{season} light"]

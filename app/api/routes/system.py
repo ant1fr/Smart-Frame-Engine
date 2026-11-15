@@ -13,11 +13,13 @@ from app.api.deps import (
     ConfigStoreDep,
     CurrentImageStoreDep,
     DeliveryServiceDep,
+    EphemeralServiceDep,
     SchedulerDep,
     SettingsDep,
 )
 from app.services.current_image import CurrentImageMeta
 from app.services.delivery import FrameTelemetry, LastDelivery, PendingUpload
+from app.services.ephemeral import EphemeralView
 from app.services.scheduler import SchedulerSnapshot
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -70,6 +72,9 @@ class StatusResponse(BaseModel):
         default=None, description="Metadata of the current image (null before the first one)"
     )
     scheduler: SchedulerSnapshot = Field(description="Autonomous refresh: timer and last run")
+    ephemeral: EphemeralView = Field(
+        description="Temporary image (now playing, poster) shown or queued, and its expiry"
+    )
     services: ServiceConfigured
 
 
@@ -87,6 +92,7 @@ async def status(
     current: CurrentImageStoreDep,
     delivery: DeliveryServiceDep,
     scheduler: SchedulerDep,
+    ephemeral: EphemeralServiceDep,
 ) -> StatusResponse:
     """Overall system status, queue state and current image (no secrets, no network)."""
     config = store.config
@@ -113,6 +119,7 @@ async def status(
         ),
         current_image=current.meta,
         scheduler=scheduler.snapshot(),
+        ephemeral=ephemeral.view(),
         services=ServiceConfigured(
             immich=bool(config.immich.accounts),
             tmdb=bool(config.tmdb.api_key.get_secret_value()),

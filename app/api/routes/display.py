@@ -48,10 +48,18 @@ async def display_upload(
     file: Annotated[UploadFile, File(description="Image file (max MAX_UPLOAD_MB)")],
     fit: Annotated[FitMode | None, Form(description="Override the default fit mode")] = None,
     push_to_fraimic: Annotated[
-        bool, Form(description="Send the result to the frame (or queue it in deepsleep mode)")
+        bool,
+        Form(
+            description="Send the result to the frame (or queue it in deepsleep mode); "
+            "false only renders a preview (/api/preview.jpg)"
+        ),
     ] = True,
     ephemeral: Annotated[
-        bool, Form(description="Temporary push (accepted for symmetry; uploads are never replayed)")
+        bool,
+        Form(
+            description="Temporary push: the previous image comes back after "
+            "DELETE /api/queue/ephemeral (uploads are never replayed)"
+        ),
     ] = False,
     hold_minutes: Annotated[
         int | None,
@@ -82,6 +90,7 @@ async def display_upload(
             details={"filename": title, "bytes": len(data)},
             fit=fit,
             push=push_to_fraimic,
+            ephemeral=ephemeral,
         )
     except InvalidImageError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc

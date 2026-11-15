@@ -173,7 +173,9 @@ class ImmichDisplayRequest(BaseModel):
     )
     fit: FitMode | None = Field(default=None, description="Override the default fit mode")
     push_to_fraimic: bool = Field(
-        default=True, description="Send the result to the frame (or queue it in deepsleep mode)"
+        default=True,
+        description="Send the result to the frame (or queue it in deepsleep mode); "
+        "false only renders a preview (/api/preview.jpg)",
     )
     ignore_history: bool = Field(
         default=False,
@@ -193,7 +195,8 @@ class ImmichDisplayRequest(BaseModel):
     ephemeral: bool = Field(
         default=False,
         description="Temporary push: do not make this request the rule replayed by "
-        "POST /api/refresh when nothing is pinned",
+        "POST /api/refresh when nothing is pinned, nor the image restored after "
+        "DELETE /api/queue/ephemeral",
     )
     hold_minutes: int | None = Field(
         default=None,

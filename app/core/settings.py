@@ -171,9 +171,19 @@ class EnvSettings(BaseSettings):
         return self.data_dir / "cache"
 
     @property
+    def assets_dir(self) -> Path:
+        """User-provided assets, e.g. ``tmdb_fallback.png`` (global poster fallback)."""
+        return self.data_dir / "assets"
+
+    @property
     def queue_dir(self) -> Path:
         """Directory holding the upload waiting for the frame (``pending.bin``)."""
         return self.data_dir / "queue"
+
+    @property
+    def last_delivery_path(self) -> Path:
+        """Location of the last successful frame delivery (what the frame shows)."""
+        return self.data_dir / "last_delivery.json"
 
     @property
     def scheduler_state_path(self) -> Path:

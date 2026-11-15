@@ -432,3 +432,45 @@ async def test_immich_runner_rejects_invalid_params() -> None:
     message = str(excinfo.value)
     assert "mode" in message and "extra" in message
     assert "bogus-mode" not in message
+
+
+# --- ephemeral support -------------------------------------------------------------------------
+async def test_clear_hold_lifts_the_protection_of_a_pushed_image(harness: HarnessFactory) -> None:
+    h = harness(interval_hours=1)
+    service = h.service()
+    await service.record_manual(ALICE, ephemeral=True, hold_minutes=180)
+    assert service.state.hold_until == h.clock.now + timedelta(minutes=180)
+    held_until = service.compute_next_run()
+    assert held_until is not None and held_until >= h.clock.now + timedelta(minutes=180)
+
+    await service.clear_hold()
+    assert service.state.hold_until is None
+    assert json.loads(h.state_path.read_text(encoding="utf-8"))["hold_until"] is None
+    released = service.compute_next_run()
+    assert released is not None and released < held_until
+    await service.clear_hold()  # idempotent
+
+
+async def test_run_in_background_replays_the_rule_and_swallows_errors(
+    harness: HarnessFactory,
+) -> None:
+    h = harness()
+    service = h.service()
+    assert service.run_in_background("revert")  # nothing to replay: logged, not raised
+    await asyncio.sleep(0.05)
+    assert service.state.last_run is None
+
+    await service.record_manual(ALICE)
+    assert service.run_in_background("revert")
+    await asyncio.sleep(0.05)
+    assert h.runner.calls == [ALICE]
+    assert service.state.last_run is not None
+    assert service.state.last_run.reason == "revert"
+    assert service.state.last_run.status == "ok"
+
+    h.runner.gate = asyncio.Event()
+    assert service.run_in_background("revert")
+    await asyncio.sleep(0.01)
+    assert not service.run_in_background("revert")  # one at a time
+    h.runner.gate.set()
+    await asyncio.sleep(0.05)

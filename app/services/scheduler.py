@@ -29,6 +29,7 @@ ignore quiet hours and the pending check, and share a lock with scheduled ones.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -48,6 +49,8 @@ from app.core.json_store import atomic_write_json, read_json
 from app.core.security import InvalidImageError
 from app.providers.base import ProviderError
 from app.providers.immich import ImmichDisplayRequest, ImmichProvider
+from app.providers.tmdb import PosterResolver
+from app.providers.tmdb.models import TmdbDisplayRequest
 from app.services.display import DisplayResult, DisplayService
 from app.services.schedule import QuietWindow, in_quiet, next_run_at
 from app.services.smart_mix import MixCandidate, MixContext, SmartMixResolver
@@ -58,7 +61,7 @@ JOB_ID: Final = "refresh"
 DEFAULT_MIN_DELAY_S: Final = 30.0
 _MAX_BACKOFF_EXPONENT: Final = 16
 
-RefreshReason = Literal["scheduled", "manual"]
+RefreshReason = Literal["scheduled", "manual", "revert"]
 RunStatus = Literal["ok", "failed", "skipped"]
 RuleSource = Literal["pinned", "smart_mix", "last"]
 Clock = Callable[[], datetime]
@@ -66,7 +69,15 @@ RuleRunner = Callable[[SourceRule], Awaitable[DisplayResult]]
 
 #: Request fields that describe one action rather than the selection; never replayed.
 NON_REPLAYED_FIELDS: Final = frozenset(
-    {"push_to_fraimic", "ignore_history", "ephemeral", "hold_minutes"}
+    {
+        "push_to_fraimic",
+        "ignore_history",
+        "ephemeral",
+        "hold_minutes",
+        "ttl_minutes",
+        "ttl_seconds",
+        "fallback_base64",
+    }
 )
 
 
@@ -272,6 +283,7 @@ class SchedulerService:
         self._scheduler: AsyncIOScheduler | None = None
         self._next_run_at: datetime | None = None
         self._listening = False
+        self._background: set[asyncio.Task[None]] = set()
 
     # --- Lifecycle ----------------------------------------------------------------------
     def load(self) -> SchedulerState:
@@ -300,6 +312,12 @@ class SchedulerService:
 
     async def stop(self) -> None:
         """Stop the timer (a refresh in progress is cancelled)."""
+        for task in list(self._background):
+            task.cancel()
+        for task in list(self._background):
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._background.clear()
         scheduler, self._scheduler = self._scheduler, None
         if scheduler is not None and scheduler.running:
             scheduler.shutdown(wait=False)
@@ -511,6 +529,36 @@ class SchedulerService:
             update["hold_until"] = now + timedelta(minutes=hold_minutes)
         await self._save(**update)
         self._arm()
+
+    async def clear_hold(self) -> None:
+        """Lift the protection of a pushed image (e.g. an ephemeral image was reverted)."""
+        if self._state.hold_until is None:
+            return
+        await self._save(hold_until=None)
+        self._arm()
+
+    def run_in_background(self, reason: RefreshReason = "revert") -> bool:
+        """Start :meth:`run` without waiting; failures are logged, never raised.
+
+        Returns:
+            Whether a refresh was started (``False`` while one is already running).
+        """
+        if self._lock.locked():
+            return False
+        task = asyncio.create_task(self._run_quietly(reason), name=f"refresh-{reason}")
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+        return True
+
+    async def _run_quietly(self, reason: RefreshReason) -> None:
+        try:
+            await self.run(reason)
+        except asyncio.CancelledError:
+            raise
+        except (RefreshError, ProviderError, InvalidImageError) as exc:
+            logger.info("Background refresh (%s) did not run: %s", reason, _safe_detail(exc))
+        except Exception:
+            logger.exception("Background refresh (%s) failed", reason)
 
     async def set_context(self, context: MixContext | None) -> None:
         """Set (or clear with ``None``) the temporary Smart Mix boost."""
@@ -749,5 +797,35 @@ def immich_runner(provider: ImmichProvider, display: DisplayService) -> RuleRunn
             raise InvalidRuleError(f"Invalid immich rule: {validation_summary(exc)}") from None
         asset = await provider.fetch(request)
         return await display.display_asset(asset, fit=request.fit, push=True)
+
+    return run
+
+
+def tmdb_rule(request: TmdbDisplayRequest) -> SourceRule:
+    """The replayable rule of a TMDB display request (only the fields it set).
+
+    ``fallback_base64`` is never stored (it can be megabytes of picture data).
+    """
+    params = request.model_dump(mode="json", exclude_unset=True, exclude=set(NON_REPLAYED_FIELDS))
+    return SourceRule(kind="tmdb", params=params)
+
+
+def tmdb_runner(resolver: PosterResolver, display: DisplayService) -> RuleRunner:
+    """Replay ``tmdb`` rules: show the poster again as a regular (non-ephemeral) image.
+
+    A Smart Mix entry such as ``{"kind": "tmdb", "params": {"query": "Amélie"}}`` thus puts a
+    favourite poster into the rotation like any photo.
+    """
+
+    async def run(rule: SourceRule) -> DisplayResult:
+        params = {
+            key: value for key, value in rule.params.items() if key not in NON_REPLAYED_FIELDS
+        }
+        try:
+            request = TmdbDisplayRequest.model_validate(params)
+        except ValidationError as exc:
+            raise InvalidRuleError(f"Invalid tmdb rule: {validation_summary(exc)}") from None
+        asset = await resolver.resolve(request.search(), fallback_url=request.fallback_url)
+        return await display.display_asset(asset, push=True)
 
     return run

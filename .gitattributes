@@ -8,3 +8,5 @@
 *.webp binary
 *.gif binary
 *.bin binary
+*.ttf binary
+*.otf binary

@@ -1,4 +1,8 @@
-"""Current image files (Home Assistant Generic Camera, UI preview, Fraimic pull).
+"""Image files (Home Assistant Generic Camera, UI preview, Fraimic pull).
+
+* ``/api/current.*`` - what the frame shows (or will show once a sleeping frame wakes up).
+* ``/api/preview.*`` - the most recent render, including ``push_to_fraimic=false`` renders
+  used to inspect a template without touching the frame.
 
 Readable without an API key unless ``PUBLIC_IMAGE_ENDPOINTS=false`` (enforced by the
 auth middleware). Responses carry an ``ETag`` derived from the ``.bin`` hash and
@@ -90,3 +94,29 @@ async def current_bin(request: Request, store: CurrentImageStoreDep) -> Response
         "application/octet-stream",
         filename=filename,
     )
+
+
+@router.head("/preview.jpg", include_in_schema=False)
+@router.get(
+    "/preview.jpg",
+    responses=_responses("image/jpeg"),
+    summary="Most recent render (enhanced, before dithering), pushed or not",
+)
+async def preview_jpeg(request: Request, store: CurrentImageStoreDep) -> Response:
+    """The latest composition as JPEG, including ``push_to_fraimic=false`` renders."""
+    meta = store.preview_meta
+    path = store.paths("preview").jpeg
+    return _serve(request, path, meta.sha256 if meta else None, "pjpg", "image/jpeg")
+
+
+@router.head("/preview_dithered.png", include_in_schema=False)
+@router.get(
+    "/preview_dithered.png",
+    responses=_responses("image/png"),
+    summary="Most recent render as the panel would show it (6-color simulation)",
+)
+async def preview_dithered(request: Request, store: CurrentImageStoreDep) -> Response:
+    """Exact 6-color dithered preview of the latest render, in viewing orientation."""
+    meta = store.preview_meta
+    path = store.paths("preview").dithered
+    return _serve(request, path, meta.sha256 if meta else None, "ppng", "image/png")

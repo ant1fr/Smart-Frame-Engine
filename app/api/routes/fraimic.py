@@ -30,7 +30,7 @@ class WakeupAccepted(BaseModel):
 
 
 def _outcome_response(outcome: DeliveryOutcome) -> JSONResponse:
-    status_code = 200 if outcome.status in {"delivered", "nothing_pending"} else 202
+    status_code = 200 if outcome.status in {"delivered", "nothing_pending", "dropped"} else 202
     return JSONResponse(outcome.model_dump(mode="json"), status_code=status_code)
 
 
@@ -46,14 +46,26 @@ _OUTCOME_RESPONSES: dict[int | str, dict[str, Any]] = {
     responses={**_OUTCOME_RESPONSES, 409: {"description": "No current image to push"}},
     summary="Force push the current image to the frame",
 )
-async def force_push(display: DisplayServiceDep) -> JSONResponse:
+async def force_push(
+    display: DisplayServiceDep,
+    from_preview: Annotated[
+        bool,
+        Query(
+            description="First make the latest preview (a push_to_fraimic=false render) the "
+            "current image"
+        ),
+    ] = False,
+) -> JSONResponse:
     """Send ``current.bin`` now, whatever the power mode.
+
+    With ``?from_preview=true`` the latest preview is promoted first, so a template can be
+    rendered with ``push_to_fraimic=false``, inspected at ``/api/preview.jpg``, then sent.
 
     Returns ``200`` when delivered and ``202`` when the frame could not be reached; the
     image then stays queued and is retried automatically.
     """
     try:
-        outcome = await display.push_current()
+        outcome = await display.push_current(from_preview=from_preview)
     except NoCurrentImageError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _outcome_response(outcome)

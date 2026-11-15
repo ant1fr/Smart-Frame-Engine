@@ -77,7 +77,9 @@ async def show_immich(
     except ProviderError as exc:
         raise provider_http_error(exc) from exc
     try:
-        result = await display.display_asset(asset, fit=request.fit, push=request.push_to_fraimic)
+        result = await display.display_asset(
+            asset, fit=request.fit, push=request.push_to_fraimic, ephemeral=request.ephemeral
+        )
     except InvalidImageError as exc:
         raise HTTPException(
             status_code=502, detail="Immich returned an image that cannot be decoded"

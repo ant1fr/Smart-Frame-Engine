@@ -393,3 +393,177 @@ async def test_refresh_info_updates_telemetry(make_service: ServiceFactory) -> N
 def test_next_wait_when_idle(make_service: ServiceFactory) -> None:
     assert make_service("continuous").next_wait() == 300.0
     assert make_service("deepsleep").next_wait() is None
+
+
+# --- ephemeral expiry & cancellation ----------------------------------------------------------
+class DropRecorder:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def __call__(self, pending: Any, reason: str) -> None:
+        self.calls.append((pending.sha256, reason))
+
+
+@respx.mock
+async def test_expired_pending_is_dropped_instead_of_delivered(
+    make_service: ServiceFactory, tmp_path: Path
+) -> None:
+    clock = FakeClock()
+    respx.get(INFO_URL).respond(json=INFO)
+    upload = respx.post(IMAGE_URL).respond(200)
+    service = make_service("deepsleep", clock=clock)
+    recorder = DropRecorder()
+    service.set_drop_handler(recorder)
+    await service.submit(
+        BIN_A, source="music", ephemeral=True, expires_at=clock.now + timedelta(minutes=3)
+    )
+    assert service.pending is not None and service.pending.ephemeral
+
+    clock.advance(181)  # the song ended while the frame was asleep
+    outcome = await service.wakeup(wait=True)
+
+    assert outcome is not None and outcome.status == "dropped"
+    assert outcome.sha256 == hashlib.sha256(BIN_A).hexdigest()
+    assert not upload.called
+    assert service.pending is None
+    assert queue_files(tmp_path) == set()
+    await eventually(lambda: recorder.calls == [(hashlib.sha256(BIN_A).hexdigest(), "expired")])
+
+
+async def test_queue_inspection_hides_expired_images(make_service: ServiceFactory) -> None:
+    clock = FakeClock()
+    service = make_service("deepsleep", clock=clock)
+    await service.submit(BIN_A, ephemeral=True, expires_at=clock.now + timedelta(seconds=60))
+    assert service.snapshot().pending is not None
+    clock.advance(61)
+    assert service.pending is None
+    assert service.snapshot().pending is None
+
+
+async def test_worker_purges_on_expiry_without_a_wakeup(make_service: ServiceFactory) -> None:
+    service = make_service("deepsleep", poll_interval_s=3600)
+    recorder = DropRecorder()
+    service.set_drop_handler(recorder)
+    await service.start()
+    expires = datetime.now(UTC) + timedelta(seconds=0.2)
+    await service.submit(BIN_A, ephemeral=True, expires_at=expires)
+
+    await eventually(lambda: bool(recorder.calls))
+    assert recorder.calls[0][1] == "expired"
+    assert service._pending is None
+
+
+async def test_next_wait_is_bounded_by_the_expiry(make_service: ServiceFactory) -> None:
+    clock = FakeClock()
+    service = make_service("deepsleep", clock=clock, poll_interval_s=600)
+    await service.submit(BIN_A, ephemeral=True, expires_at=clock.now + timedelta(seconds=90))
+    assert service.next_wait() == pytest.approx(90.0)
+    clock.advance(100)
+    assert service.next_wait() == 0.0
+
+
+async def test_restored_expired_pending_is_purged_by_the_worker(tmp_path: Path) -> None:
+    clock = FakeClock()
+    store = make_config_store(tmp_path, "deepsleep")
+    first = DeliveryService(tmp_path / "queue", store, clock=clock)
+    first.load()
+    await first.submit(BIN_A, ephemeral=True, expires_at=clock.now + timedelta(minutes=1))
+
+    clock.advance(120)  # the app was down past the expiry
+    restarted = DeliveryService(tmp_path / "queue", store, clock=clock)
+    assert restarted.load() is not None
+    recorder = DropRecorder()
+    restarted.set_drop_handler(recorder)
+    assert restarted.next_wait() == 0.0
+    await restarted.start()
+    try:
+        await eventually(lambda: bool(recorder.calls))
+    finally:
+        await restarted.stop()
+    assert queue_files(tmp_path) == set()
+
+
+async def test_cancel_ephemeral_only_drops_ephemeral_images(
+    make_service: ServiceFactory, tmp_path: Path
+) -> None:
+    service = make_service("deepsleep")
+    recorder = DropRecorder()
+    service.set_drop_handler(recorder)
+
+    await service.submit(BIN_A, source="immich")
+    assert await service.cancel_ephemeral() is None
+    assert service.pending is not None
+
+    await service.submit(BIN_B, source="tmdb", ephemeral=True)
+    dropped = await service.cancel_ephemeral()
+    assert dropped is not None and dropped.source == "tmdb"
+    assert service.pending is None
+    assert queue_files(tmp_path) == set()
+    assert recorder.calls == []  # the caller decides what to show instead
+
+
+async def test_extend_pending_moves_the_expiry_of_matching_content(
+    make_service: ServiceFactory, tmp_path: Path
+) -> None:
+    clock = FakeClock()
+    service = make_service("deepsleep", clock=clock)
+    await service.submit(
+        BIN_A, ephemeral=True, expires_at=clock.now + timedelta(minutes=1), content_key="song-1"
+    )
+    later = clock.now + timedelta(minutes=5)
+    assert not await service.extend_pending("song-2", later)
+    assert await service.extend_pending("song-1", later)
+    assert service.pending is not None and service.pending.expires_at == later
+
+    restarted = DeliveryService(tmp_path / "queue", service._config_store, clock=clock)
+    restored = restarted.load()
+    assert restored is not None and restored.expires_at == later
+
+
+@respx.mock
+async def test_last_delivery_is_persisted_and_restored(tmp_path: Path) -> None:
+    respx.get(INFO_URL).respond(json=INFO)
+    respx.post(IMAGE_URL).respond(200)
+    store = make_config_store(tmp_path, "continuous")
+    path = tmp_path / "last_delivery.json"
+    first = DeliveryService(tmp_path / "queue", store, last_delivery_path=path)
+    first.load()
+    await first.submit(BIN_A)
+    await first.stop()
+    assert path.is_file()
+
+    restarted = DeliveryService(tmp_path / "queue", store, last_delivery_path=path)
+    restarted.load()
+    sha_a = hashlib.sha256(BIN_A).hexdigest()
+    assert restarted.last_delivery is not None and restarted.last_delivery.sha256 == sha_a
+    assert not restarted.frame_content_differs(sha_a)
+    assert restarted.frame_content_differs(hashlib.sha256(BIN_B).hexdigest())
+
+    path.write_text("{not json", encoding="utf-8")
+    broken = DeliveryService(tmp_path / "queue", store, last_delivery_path=path)
+    broken.load()
+    assert broken.last_delivery is None
+    assert broken.frame_content_differs(sha_a)  # unknown frame state
+
+
+@respx.mock
+async def test_frame_content_counts_an_upload_in_progress(make_service: ServiceFactory) -> None:
+    respx.get(INFO_URL).respond(json=INFO)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_upload(request: httpx.Request) -> httpx.Response:
+        started.set()
+        await release.wait()
+        return httpx.Response(200)
+
+    respx.post(IMAGE_URL).mock(side_effect=slow_upload)
+    service = make_service("deepsleep")
+    sha_a, sha_b = hashlib.sha256(BIN_A).hexdigest(), hashlib.sha256(BIN_B).hexdigest()
+    await service.submit(BIN_A)
+    flush = asyncio.create_task(service.flush("wakeup"))
+    await started.wait()
+    assert not service.frame_content_differs(sha_a)
+    assert service.frame_content_differs(sha_b)
+    release.set()
+    assert (await flush).status == "delivered"
+    assert not service.frame_content_differs(sha_a)

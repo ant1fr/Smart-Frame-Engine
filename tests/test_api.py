@@ -96,6 +96,7 @@ def test_config_schema(make_client: ClientFactory) -> None:
     assert set(schema["properties"]) == {
         "immich",
         "tmdb",
+        "music",
         "fraimic",
         "display",
         "eink",
