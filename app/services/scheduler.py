@@ -65,7 +65,9 @@ Clock = Callable[[], datetime]
 RuleRunner = Callable[[SourceRule], Awaitable[DisplayResult]]
 
 #: Request fields that describe one action rather than the selection; never replayed.
-NON_REPLAYED_FIELDS: Final = frozenset({"push_to_fraimic", "ignore_history"})
+NON_REPLAYED_FIELDS: Final = frozenset(
+    {"push_to_fraimic", "ignore_history", "ephemeral", "hold_minutes"}
+)
 
 
 def _utcnow() -> datetime:
@@ -129,6 +131,9 @@ class SchedulerState(BaseModel):
     context: MixContext | None = Field(
         default=None, description="Temporary Smart Mix boost or override"
     )
+    hold_until: AwareDatetime | None = Field(
+        default=None, description="A pushed image stays up at least until then"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +196,9 @@ class SchedulerSnapshot(BaseModel):
     last_run: LastRun | None
     last_display_at: AwareDatetime | None
     consecutive_failures: int
+    hold_until: AwareDatetime | None = Field(
+        description="A directly pushed image is protected from scheduled refreshes until then"
+    )
     active_rule: ActiveRuleView | None = Field(description="null until something can be replayed")
 
 
@@ -301,6 +309,10 @@ class SchedulerService:
         """Source kinds that can be replayed (the runner registry)."""
         return sorted(self._runners)
 
+    def _live_hold(self) -> datetime | None:
+        hold = self._state.hold_until
+        return hold if hold is not None and hold > self._clock() else None
+
     def live_context(self) -> MixContext | None:
         """The Smart Mix context boost, unless it has expired."""
         context = self._state.context
@@ -343,6 +355,7 @@ class SchedulerService:
             last_run=self._state.last_run,
             last_display_at=self._state.last_display_at,
             consecutive_failures=self._state.consecutive_failures,
+            hold_until=self._live_hold(),
             active_rule=(
                 ActiveRuleView(kind=active.kind, source=active.source) if active else None
             ),
@@ -361,6 +374,8 @@ class SchedulerService:
             due = state.timer_reset_at + timedelta(hours=config.interval_hours)
         else:
             due = now
+        if state.hold_until is not None:
+            due = max(due, state.hold_until)
         due = max(due, now + self._min_delay)
         return next_run_at(due, quiet_window(config), ZoneInfo(config.timezone))
 
@@ -426,16 +441,29 @@ class SchedulerService:
         finally:
             self._arm()
 
-    async def record_manual(self, rule: SourceRule | None) -> None:
-        """Note a successful manual display: it resets the timer.
+    async def record_manual(
+        self,
+        rule: SourceRule | None,
+        *,
+        ephemeral: bool = False,
+        hold_minutes: int | None = None,
+    ) -> None:
+        """Note a direct display: it resets the timer and never touches the configuration.
 
         Args:
             rule: The request to replay from now on, or ``None`` for sources that cannot
                 be replayed (e.g. an uploaded file), which keep the previous rule.
+            ephemeral: A temporary push (movie poster, now playing...): it does not become
+                the fallback ``last_rule``.
+            hold_minutes: Protect the image from scheduled refreshes for at least this long
+                (the next refresh is not due before then, even if the interval is shorter).
         """
-        update: dict[str, Any] = self._timer_reset(self._clock())
-        if rule is not None:
+        now = self._clock()
+        update: dict[str, Any] = self._timer_reset(now)
+        if rule is not None and not ephemeral:
             update["last_rule"] = rule
+        if hold_minutes:
+            update["hold_until"] = now + timedelta(minutes=hold_minutes)
         await self._save(**update)
         self._arm()
 
@@ -463,6 +491,12 @@ class SchedulerService:
             # The configuration changed after the timer was armed: wait for the window
             # end without restarting the interval.
             return await self._skip("Quiet hours", None, restart_timer=False)
+        hold = self._live_hold()
+        if hold is not None:
+            # A direct push arrived after the timer was armed: leave it up until the hold ends.
+            return await self._skip(
+                f"A pushed image is held until {hold.isoformat()}", None, restart_timer=False
+            )
         active = self.active_rule()
         if active is None:
             return await self._skip(
@@ -558,6 +592,7 @@ class SchedulerService:
             "timer_reset_at": now,
             "retry_at": None,
             "consecutive_failures": 0,
+            "hold_until": None,
         }
 
     async def _record_success(

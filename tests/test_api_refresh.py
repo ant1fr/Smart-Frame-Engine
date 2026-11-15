@@ -165,6 +165,7 @@ def test_status_when_disabled(make_client: ClientFactory) -> None:
         "last_run": None,
         "last_display_at": None,
         "consecutive_failures": 0,
+        "hold_until": None,
         "active_rule": None,
     }
 

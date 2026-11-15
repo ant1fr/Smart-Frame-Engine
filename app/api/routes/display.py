@@ -50,6 +50,15 @@ async def display_upload(
     push_to_fraimic: Annotated[
         bool, Form(description="Send the result to the frame (or queue it in deepsleep mode)")
     ] = True,
+    ephemeral: Annotated[
+        bool, Form(description="Temporary push (accepted for symmetry; uploads are never replayed)")
+    ] = False,
+    hold_minutes: Annotated[
+        int | None,
+        Form(
+            ge=1, le=10080, description="Keep it up at least this long before a scheduled refresh"
+        ),
+    ] = None,
 ) -> DisplayResult:
     """Render an uploaded image for the frame and make it the current image.
 
@@ -77,5 +86,5 @@ async def display_upload(
     except InvalidImageError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     if push_to_fraimic:
-        await scheduler.record_manual(None)
+        await scheduler.record_manual(None, ephemeral=ephemeral, hold_minutes=hold_minutes)
     return result

@@ -190,6 +190,17 @@ class ImmichDisplayRequest(BaseModel):
         description="Memories: photos taken around today's date in previous years "
         "(evaluated at display time; exclusive with taken_after/taken_before)",
     )
+    ephemeral: bool = Field(
+        default=False,
+        description="Temporary push: do not make this request the rule replayed by "
+        "POST /api/refresh when nothing is pinned",
+    )
+    hold_minutes: int | None = Field(
+        default=None,
+        ge=1,
+        le=10080,
+        description="Keep this image up for at least this long before a scheduled refresh",
+    )
     skip_quality_gate: bool | None = Field(
         default=None,
         description="Skip the photo suitability check. Default: skipped in album mode "

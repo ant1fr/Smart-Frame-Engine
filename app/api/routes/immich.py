@@ -70,7 +70,9 @@ async def display_immich(
             status_code=502, detail="Immich returned an image that cannot be decoded"
         ) from exc
     if request.push_to_fraimic:
-        await scheduler.record_manual(immich_rule(request))
+        await scheduler.record_manual(
+            immich_rule(request), ephemeral=request.ephemeral, hold_minutes=request.hold_minutes
+        )
     return result
 
 
