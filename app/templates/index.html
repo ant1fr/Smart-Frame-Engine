@@ -78,10 +78,10 @@
               </p>
             </div>
             <div class="ml-auto flex flex-wrap gap-2">
-              <button type="button" class="btn-primary" @click="refreshNow()" :disabled="busy.refresh">
+              <button type="button" class="btn-primary" @click="refreshNow()" :disabled="!!(busy.refresh)">
                 <span x-text="busy.refresh ? 'Loading…' : 'Next photo'"></span>
               </button>
-              <button type="button" class="btn" @click="forcePush()" :disabled="busy.push">Force push</button>
+              <button type="button" class="btn" @click="forcePush()" :disabled="!!(busy.push)">Force push</button>
             </div>
           </div>
           <template x-if="current()">
@@ -140,7 +140,7 @@
                   <p class="text-2xl font-semibold tabular-nums" x-text="countdown(status.ephemeral.expires_at)"></p>
                 </div>
                 <p class="text-xs text-slate-500" x-show="!status.ephemeral.expires_at">Stays until cancelled or replaced.</p>
-                <button type="button" class="btn w-full" @click="clearEphemeral()" :disabled="busy.ephemeral || !status.ephemeral.has_base">Restore previous image</button>
+                <button type="button" class="btn w-full" @click="clearEphemeral()" :disabled="!!(busy.ephemeral || !status.ephemeral.has_base)">Restore previous image</button>
               </div>
             </template>
             <template x-if="status && !ephemeralActive()">
@@ -233,7 +233,7 @@
               </template>
             </ul>
             <p class="mt-2 text-xs text-amber-600 dark:text-amber-400" x-show="ambient && ambientFields().length && !ambient.smart_mix_enabled">Presence, weather and boosts only act while Smart Mix is enabled.</p>
-            <button type="button" class="btn w-full mt-3" x-show="ambientFields().length" @click="clearAmbient()" :disabled="busy.ambient">Clear context</button>
+            <button type="button" class="btn w-full mt-3" x-show="ambientFields().length" @click="clearAmbient()" :disabled="!!(busy.ambient)">Clear context</button>
           </div>
 
           <!-- Services -->
@@ -307,7 +307,7 @@
             <select class="input !w-28" x-model="tmdb.mediaType">
               <option value="multi">Any</option><option value="movie">Movie</option><option value="tv">TV</option>
             </select>
-            <button class="btn-primary" :disabled="busy.tmdbSearch">Search</button>
+            <button class="btn-primary" :disabled="!!(busy.tmdbSearch)">Search</button>
           </form>
           <p class="text-sm text-slate-500" x-show="tmdb.searched && !tmdb.results.length && !busy.tmdbSearch">No match.</p>
           <div class="grid grid-cols-3 sm:grid-cols-4 gap-3" x-show="tmdb.results.length">
@@ -324,8 +324,8 @@
           <div class="flex flex-wrap items-center gap-2" x-show="tmdb.selected">
             <span class="text-sm truncate max-w-full">Selected: <b x-text="tmdb.selected && tmdb.selected.title"></b></span>
             <label class="text-xs text-slate-500 ml-auto">TTL <input type="number" min="1" max="1440" class="input !w-20 !py-1 inline" x-model.number="tmdb.ttl"> min</label>
-            <button type="button" class="btn" @click="tmdbShow(false)" :disabled="busy.render">Preview</button>
-            <button type="button" class="btn-primary" @click="tmdbShow(true)" :disabled="busy.render">Send to frame</button>
+            <button type="button" class="btn" @click="tmdbShow(false)" :disabled="!!(busy.render)">Preview</button>
+            <button type="button" class="btn-primary" @click="tmdbShow(true)" :disabled="!!(busy.render)">Send to frame</button>
           </div>
         </div>
 
@@ -345,8 +345,8 @@
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="music.enrich" class="rounded"> Look up the cover</label>
-            <button type="button" class="btn ml-auto" @click="musicShow(false)" :disabled="busy.render || !music.title || !music.artist">Preview</button>
-            <button type="button" class="btn-primary" @click="musicShow(true)" :disabled="busy.render || !music.title || !music.artist">Send to frame</button>
+            <button type="button" class="btn ml-auto" @click="musicShow(false)" :disabled="!!(busy.render || !music.title || !music.artist)">Preview</button>
+            <button type="button" class="btn-primary" @click="musicShow(true)" :disabled="!!(busy.render || !music.title || !music.artist)">Send to frame</button>
           </div>
         </div>
 
@@ -368,8 +368,8 @@
             <label class="field"><span>Stays for (minutes)</span><input type="number" min="1" max="10080" class="input" x-model.number="card.ttl"></label>
           </div>
           <div class="flex gap-2 justify-end">
-            <button type="button" class="btn" @click="cardShow(false)" :disabled="busy.render || !card.title.trim()">Preview</button>
-            <button type="button" class="btn-primary" @click="cardShow(true)" :disabled="busy.render || !card.title.trim()">Send to frame</button>
+            <button type="button" class="btn" @click="cardShow(false)" :disabled="!!(busy.render || !card.title.trim())">Preview</button>
+            <button type="button" class="btn-primary" @click="cardShow(true)" :disabled="!!(busy.render || !card.title.trim())">Send to frame</button>
           </div>
         </div>
 
@@ -396,7 +396,7 @@
                     <span class="badge-violet" x-text="'dither · ' + preview.render.dither"></span>
                   </span>
                 </template>
-                <button type="button" class="btn-primary ml-auto" @click="pushPreview()" :disabled="busy.push || preview.pushed">Send this preview</button>
+                <button type="button" class="btn-primary ml-auto" @click="pushPreview()" :disabled="!!(busy.push || preview.pushed)">Send this preview</button>
               </div>
             </div>
           </template>
@@ -438,7 +438,7 @@
             </template>
             <div class="flex gap-2">
               <button type="button" class="btn" @click="lab.variants.push({profile: 'vivid', dither: 'stucki'})" x-show="lab.variants.length < 4">Add variant</button>
-              <button type="button" class="btn-primary ml-auto" @click="labRender()" :disabled="busy.lab || !lab.file" x-text="busy.lab ? 'Rendering…' : 'Render'"></button>
+              <button type="button" class="btn-primary ml-auto" @click="labRender()" :disabled="!!(busy.lab || !lab.file)" x-text="busy.lab ? 'Rendering…' : 'Render'"></button>
             </div>
           </div>
         </div>
@@ -465,7 +465,7 @@
           </template>
         </div>
         <div class="flex justify-end" x-show="lab.file">
-          <button type="button" class="btn" @click="uploadShow()" :disabled="busy.render">Display this image on the frame</button>
+          <button type="button" class="btn" @click="uploadShow()" :disabled="!!(busy.render)">Display this image on the frame</button>
         </div>
       </div>
     </section>
@@ -511,7 +511,7 @@
                 </label>
                 <label class="field"><span>Safe margin (px)</span><input type="number" min="0" max="250" class="input" x-model.number="draft.display.safe_margin_px"></label>
               </div>
-              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['fraimic', 'display'])" :disabled="busy.save || !dirty(['fraimic', 'display'])">Save</button></div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['fraimic', 'display'])" :disabled="!!(busy.save || !dirty(['fraimic', 'display']))">Save</button></div>
             </div>
             <div class="card space-y-4">
               <h3 class="card-title">Schedule</h3>
@@ -523,7 +523,7 @@
                 <label class="field"><span>Quiet hours until</span><input type="time" class="input" :value="draft.scheduler.quiet_hours_end || ''" @input="draft.scheduler.quiet_hours_end = $event.target.value || null"></label>
                 <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" class="rounded" x-model="draft.scheduler.skip_if_pending"> Skip a refresh while the previous image still waits for a sleeping frame</label>
               </div>
-              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['scheduler'])" :disabled="busy.save || !dirty(['scheduler'])">Save</button></div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['scheduler'])" :disabled="!!(busy.save || !dirty(['scheduler']))">Save</button></div>
             </div>
           </div>
         </template>
@@ -545,14 +545,14 @@
                   </div>
                   <label class="field"><span>API key</span><input class="input font-mono" type="password" autocomplete="off" x-model="a.api_key" :placeholder="a.isNew ? 'Immich API key' : 'Unchanged'"></label>
                   <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" class="btn" @click="testImmich(a)" :disabled="a.testing">Test connection</button>
+                    <button type="button" class="btn" @click="testImmich(a)" :disabled="!!(a.testing)">Test connection</button>
                     <span class="text-sm" x-show="a.test" :class="a.test && a.test.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                       x-text="a.test ? (a.test.ok ? '✓ Immich ' + a.test.version + ' · ' + a.test.people + ' people · ' + a.test.albums + ' albums' : a.test.error) : ''"></span>
                     <button type="button" class="btn ml-auto !text-red-600" @click="accounts.splice(i, 1)">Remove</button>
                   </div>
                 </div>
               </template>
-              <div class="flex justify-end"><button type="button" class="btn-primary" @click="saveAccounts()" :disabled="busy.save">Save accounts</button></div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="saveAccounts()" :disabled="!!(busy.save)">Save accounts</button></div>
             </div>
 
             <div class="card space-y-4">
@@ -572,7 +572,7 @@
                 <div class="flex items-center gap-2 mb-2">
                   <p class="text-sm font-medium">Album</p>
                   <span class="text-xs text-slate-500" x-text="draft.immich.album ? draft.immich.album : 'All photos'"></span>
-                  <button type="button" class="btn ml-auto !py-1 !text-xs" @click="loadAlbums()" :disabled="busy.albums" x-text="albums.length ? 'Reload' : 'Load albums'"></button>
+                  <button type="button" class="btn ml-auto !py-1 !text-xs" @click="loadAlbums()" :disabled="!!(busy.albums)" x-text="albums.length ? 'Reload' : 'Load albums'"></button>
                 </div>
                 <div class="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-6 gap-3 max-h-96 overflow-y-auto p-1" x-show="albums.length">
                   <button type="button" @click="draft.immich.album = ''" class="text-left">
@@ -593,7 +593,7 @@
               <div class="pt-2">
                 <div class="flex items-center gap-2 mb-1">
                   <p class="text-sm font-medium">People</p>
-                  <button type="button" class="btn ml-auto !py-1 !text-xs" @click="loadPeople(true)" :disabled="busy.people" x-text="people.length ? 'Reload' : 'Load people'"></button>
+                  <button type="button" class="btn ml-auto !py-1 !text-xs" @click="loadPeople(true)" :disabled="!!(busy.people)" x-text="people.length ? 'Reload' : 'Load people'"></button>
                 </div>
                 <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Filter: photos must show the selected people. Always: merged into every selection.</p>
                 <input class="input mb-2" type="search" placeholder="Filter names" x-model="peopleFilter" x-show="people.length > 12">
@@ -616,7 +616,7 @@
                   <span x-show="draft.immich.always_include.length">Always: <span x-text="draft.immich.always_include.join(', ')"></span>.</span>
                 </p>
               </div>
-              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['immich'], ['accounts'])" :disabled="busy.save || !dirty(['immich'], ['accounts'])">Save</button></div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['immich'], ['accounts'])" :disabled="!!(busy.save || !dirty(['immich'], ['accounts']))">Save</button></div>
             </div>
           </div>
         </template>
@@ -629,7 +629,7 @@
               <input class="input font-mono" type="password" autocomplete="off" x-model="draft.tmdb.api_key" placeholder="Not set">
             </label>
             <div class="flex items-center gap-2">
-              <button type="button" class="btn" @click="testTmdb()" :disabled="busy.tmdbTest">Test key</button>
+              <button type="button" class="btn" @click="testTmdb()" :disabled="!!(busy.tmdbTest)">Test key</button>
               <span class="text-sm" x-show="tmdbTest" :class="tmdbTest && tmdbTest.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="tmdbTest ? (tmdbTest.ok ? '✓ TMDB accepted the key' : tmdbTest.error) : ''"></span>
             </div>
             <div class="grid sm:grid-cols-2 gap-4">
@@ -640,7 +640,7 @@
               <label class="field"><span>Poster stays for (minutes)</span><input type="number" min="1" max="1440" class="input" x-model.number="draft.tmdb.ephemeral_ttl_minutes"></label>
               <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.tmdb.fallback_title_card"> Show a title card when no poster is found</label>
             </div>
-            <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['tmdb'])" :disabled="busy.save || !dirty(['tmdb'])">Save</button></div>
+            <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['tmdb'])" :disabled="!!(busy.save || !dirty(['tmdb']))">Save</button></div>
           </div>
         </template>
 
@@ -653,8 +653,8 @@
             </div>
             <p class="text-xs text-slate-500 dark:text-slate-400">Every Immich selection (Smart Mix, Random Discovery, searches) is filtered automatically over the whole library: no photo-by-photo curation. Photos in Immich's Locked Folder are never shown, with or without Family Mode. Home Assistant can switch Family Mode for a while with <code>POST /api/context</code> (<code>family_mode</code>).</p>
             <div class="flex items-center gap-2">
-              <button type="button" class="btn !py-1 !text-xs" @click="loadPeople(true)" :disabled="busy.people" x-text="people.length ? 'Reload people' : 'Load people'"></button>
-              <button type="button" class="btn !py-1 !text-xs" @click="loadAlbums()" :disabled="busy.albums" x-text="albums.length ? 'Reload albums' : 'Load albums'"></button>
+              <button type="button" class="btn !py-1 !text-xs" @click="loadPeople(true)" :disabled="!!(busy.people)" x-text="people.length ? 'Reload people' : 'Load people'"></button>
+              <button type="button" class="btn !py-1 !text-xs" @click="loadAlbums()" :disabled="!!(busy.albums)" x-text="albums.length ? 'Reload albums' : 'Load albums'"></button>
             </div>
 
             <div>
@@ -707,7 +707,7 @@
               </div>
               <p class="text-xs text-slate-500 mt-2" x-show="draft.family.private_albums.length" x-text="'Private: ' + draft.family.private_albums.join(', ')"></p>
             </div>
-            <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['family'])" :disabled="busy.save || !dirty(['family'])">Save</button></div>
+            <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['family'])" :disabled="!!(busy.save || !dirty(['family']))">Save</button></div>
           </div>
         </template>
 
@@ -755,7 +755,7 @@
               <input type="range" min="0" max="0.5" step="0.01" class="w-full" x-model.number="draft.smart_mix.discovery_share">
               <p class="text-xs text-slate-500 dark:text-slate-400">That share of scheduled refreshes shows a random photo from the whole library (quality gate on: no screenshots, low-resolution shots, documents or blank frames; Family Mode and the Locked Folder rule still apply). If nothing suitable is found, a regular entry is used.</p>
             </div>
-            <div class="flex justify-end"><button type="button" class="btn-primary" @click="saveMix()" :disabled="busy.save">Save</button></div>
+            <div class="flex justify-end"><button type="button" class="btn-primary" @click="saveMix()" :disabled="!!(busy.save)">Save</button></div>
           </div>
         </template>
 
@@ -781,7 +781,7 @@
                 </template>
                 <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.eink.edge_filters"> Official edge-enhance chain</label>
               </div>
-              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['eink'])" :disabled="busy.save || !dirty(['eink'])">Save</button></div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['eink'])" :disabled="!!(busy.save || !dirty(['eink']))">Save</button></div>
             </div>
             <div class="card space-y-4">
               <h3 class="card-title">Photo quality gate</h3>
@@ -790,7 +790,7 @@
                 <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.quality.enabled"> Enabled</label>
                 <label class="field"><span>Minimum short side (px)</span><input type="number" min="0" max="4000" class="input" x-model.number="draft.quality.min_dimension"></label>
               </div>
-              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['quality'])" :disabled="busy.save || !dirty(['quality'])">Save</button></div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['quality'])" :disabled="!!(busy.save || !dirty(['quality']))">Save</button></div>
             </div>
           </div>
         </template>
@@ -813,7 +813,7 @@
               </div>
               <p class="text-xs text-slate-500" x-show="apiKey.source === 'env'">Set by <code>APP_API_KEY</code> in .env: change it there and restart.</p>
               <div x-show="apiKey.regenerable && session.mode === 'password' && session.via === 'session'" class="flex items-center gap-3">
-                <button type="button" class="btn !text-red-600" @click="regenerateKey()" :disabled="busy.key">Regenerate</button>
+                <button type="button" class="btn !text-red-600" @click="regenerateKey()" :disabled="!!(busy.key)">Regenerate</button>
                 <span class="text-xs text-slate-500">Clients using the old key stop working immediately.</span>
               </div>
             </div>
