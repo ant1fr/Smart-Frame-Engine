@@ -28,6 +28,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, Val
 from app.core.atomic import atomic_write_bytes
 from app.core.config_models import DitherAlgorithm, FitMode, PanelModel
 from app.core.json_store import atomic_write_json, read_json
+from app.processor.auto import RenderDecision
 from app.processor.pipeline import RenderResult
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,10 @@ class CurrentImageMeta(BaseModel):
     bin_size: int
     template: str | None = Field(
         default=None, description="Composition template (poster, album, title_card), if any"
+    )
+    render: RenderDecision | None = Field(
+        default=None,
+        description="The eInk profile and dithering used, and why (automatic or from settings)",
     )
     pushed: bool = Field(default=True, description="Whether the image was sent to the frame")
     ephemeral: bool = Field(
@@ -209,6 +214,7 @@ class CurrentImageStore:
             sha256=result.sha256,
             bin_size=len(result.bin),
             template=template,
+            render=result.decision,
             pushed=push,
             ephemeral=ephemeral,
             expires_at=expires_at,

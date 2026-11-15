@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import io
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from typing import Literal
 
@@ -32,6 +32,12 @@ from PIL import Image, ImageOps
 
 from app.core.config_models import EinkConfig, EinkProfile, FitMode, PanelSpec, RuntimeConfig
 from app.core.security import verify_image_bytes
+from app.processor.auto import (
+    ContentContext,
+    RenderDecision,
+    measure_content,
+    resolve,
+)
 from app.processor.dither import dither
 from app.processor.enhance import enhance
 from app.processor.fit import (
@@ -82,6 +88,9 @@ class RenderOptions:
     background: BackgroundStyle
     eink: EinkConfig
     safe_margin_px: int = 0
+    #: What the image is, for the automatic profile and dither choice (``eink.profile`` and
+    #: ``eink.dither`` set to ``auto``).
+    context: ContentContext = "photo"
 
     def __post_init__(self) -> None:
         native = (self.panel.width, self.panel.height)
@@ -101,13 +110,15 @@ class RenderOptions:
         *,
         fit: FitMode | None = None,
         eink_profile: EinkProfile | None = None,
+        context: ContentContext = "photo",
     ) -> RenderOptions:
         """Build options from the effective config.
 
         Args:
             config: Effective runtime configuration.
             fit: Overrides the default fit mode.
-            eink_profile: Overrides ``eink.profile`` (e.g. posters always use ``official``).
+            eink_profile: Overrides ``eink.profile`` (e.g. a source forcing ``official``).
+            context: What the image is (drives the ``auto`` profile and dither choice).
         """
         rotation: Rotation = (
             0 if config.display.orientation == "portrait" else config.display.landscape_rotation
@@ -120,6 +131,7 @@ class RenderOptions:
             background=config.display.contain_background,
             eink=config.eink.effective(eink_profile),
             safe_margin_px=config.display.safe_margin_px,
+            context=context,
         )
 
 
@@ -131,6 +143,7 @@ class RenderResult:
     composed: Image.Image = field(repr=False)
     indices: npt.NDArray[np.uint8] = field(repr=False)
     bin: bytes = field(repr=False)
+    decision: RenderDecision | None = None
 
     @cached_property
     def sha256(self) -> str:
@@ -157,6 +170,20 @@ class RenderResult:
         return buffer.getvalue()
 
 
+def resolved_options(
+    image: Image.Image | None, options: RenderOptions
+) -> tuple[RenderOptions, RenderDecision]:
+    """``options`` with ``auto`` profile and dither resolved for ``image``.
+
+    Args:
+        image: The source picture (``None`` for a title card).
+        options: Render options, possibly with ``auto`` settings.
+    """
+    stats = measure_content(image) if image is not None else None
+    eink, decision = resolve(options.eink, options.context, stats)
+    return replace(options, eink=eink), decision
+
+
 def compose(
     image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
 ) -> Image.Image:
@@ -165,6 +192,8 @@ def compose(
     The picture fills the frame minus ``safe_margin_px`` on every side; whatever is left
     over (the margin, or the bars of the ``contain`` fit) is the background.
     """
+    if options.eink.profile == "auto":
+        options, _ = resolved_options(image, options)
     margin = options.safe_margin_px
     area = (options.frame_size[0] - 2 * margin, options.frame_size[1] - 2 * margin)
     if options.fit == "smart_crop":
@@ -179,14 +208,20 @@ def compose(
     return paste_centered(background, picture)
 
 
-def finalize(composed: Image.Image, options: RenderOptions) -> RenderResult:
+def finalize(
+    composed: Image.Image, options: RenderOptions, decision: RenderDecision | None = None
+) -> RenderResult:
     """Rotate, dither and encode a frame-sized composition (viewing orientation).
+
+    An unresolved ``auto`` dither is decided from the composition itself.
 
     Raises:
         ValueError: If ``composed`` does not have the frame size of ``options``.
     """
     if composed.size != options.frame_size:
         raise ValueError(f"Composition is {composed.size}, expected {options.frame_size}")
+    if options.eink.dither == "auto" or options.eink.profile == "auto":
+        options, decision = resolved_options(composed, options)
     composed = composed.convert("RGB")
     quarter_turns = options.rotation // 90
     # Rotate *before* dithering, like the official converter's ``--fit rotate``: error
@@ -202,14 +237,20 @@ def finalize(composed: Image.Image, options: RenderOptions) -> RenderResult:
         composed=composed,
         indices=indices,
         bin=encode_bin(portrait, options.panel),
+        decision=decision,
     )
 
 
 def render(
     image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
 ) -> RenderResult:
-    """Compose, dither and encode ``image`` for the configured panel."""
-    return finalize(compose(image.convert("RGB"), options, regions), options)
+    """Compose, dither and encode ``image`` for the configured panel.
+
+    ``auto`` profile and dither are resolved once, from the source picture.
+    """
+    source = image.convert("RGB")
+    resolved, decision = resolved_options(source, options)
+    return finalize(compose(source, resolved, regions), resolved, decision)
 
 
 def canvas_for(options: RenderOptions) -> Canvas:
@@ -222,10 +263,14 @@ def render_layout(
 ) -> RenderResult:
     """Compose ``image`` with a template (never cropped), then dither and encode it.
 
+    ``auto`` profile and dither are resolved from the artwork and the layout's context.
+
     Raises:
         ValueError: If the layout needs artwork and ``image`` is ``None``.
     """
-    return finalize(compose_layout(image, layout, canvas_for(options)), options)
+    options = replace(options, context=layout.name)
+    resolved, decision = resolved_options(image, options)
+    return finalize(compose_layout(image, layout, canvas_for(resolved)), resolved, decision)
 
 
 def render_layout_bytes(data: bytes | None, layout: Layout, options: RenderOptions) -> RenderResult:

@@ -30,7 +30,7 @@ def test_defaults_follow_official_converter() -> None:
     assert config.fraimic.panel == "133"
     assert config.fraimic.upload_path == "/api/image"
     assert config.fraimic.status_path == "/api/info"
-    assert config.eink.dither == "atkinson"
+    assert (config.eink.profile, config.eink.dither) == ("auto", "auto")
     assert (config.eink.brightness, config.eink.contrast, config.eink.saturation) == (
         1.1,
         1.2,
@@ -213,22 +213,40 @@ def test_dump_config_reveals_or_masks_secrets() -> None:
 
 
 # --- eInk profiles -----------------------------------------------------------------------------
-def test_official_profile_is_the_default_and_leaves_values_untouched() -> None:
+def test_auto_is_the_default_and_stays_unresolved_until_render_time() -> None:
     from app.core.config_models import EinkConfig
 
-    config = EinkConfig(contrast=1.4, dither="floyd_steinberg")
-    assert config.profile == "official"
+    config = EinkConfig(contrast=1.4)
+    assert (config.profile, config.dither) == ("auto", "auto")
     assert config.effective() is config
+
+
+def test_official_profile_leaves_values_untouched_and_floyd_steinberg_is_an_alias() -> None:
+    from app.core.config_models import EinkConfig
+
+    config = EinkConfig(profile="official", contrast=1.4, dither="floyd_steinberg")
+    assert config.dither == "fs"
+    assert config.effective() is config
+
+
+@pytest.mark.parametrize("profile", ["soft", "vivid", "natural"])
+def test_curve_profiles_neutralize_the_plain_factors(profile: str) -> None:
+    from app.core.config_models import EinkConfig
+
+    effective = EinkConfig(profile=profile, contrast=1.5).effective()  # type: ignore[arg-type]
+    assert effective.profile == profile
+    assert (effective.brightness, effective.contrast, effective.saturation) == (1.0, 1.0, 1.0)
+    assert effective.edge_filters is False and effective.sharpness == 1.0
 
 
 def test_photo_profile_overrides_the_five_tuning_fields_but_keeps_dithering() -> None:
     from app.core.config_models import PHOTO_PROFILE, EinkConfig
 
-    config = EinkConfig(profile="photo", contrast=1.5, dither="floyd_steinberg")
+    config = EinkConfig(profile="photo", contrast=1.5, dither="stucki")
     effective = config.effective()
     for name, value in PHOTO_PROFILE.items():
         assert getattr(effective, name) == value
-    assert effective.dither == "floyd_steinberg"
+    assert effective.dither == "stucki"
     assert effective.edge_filters is False and effective.saturation == 0.85
     assert config.contrast == 1.5  # the stored configuration is not modified
 
@@ -237,7 +255,8 @@ def test_effective_profile_can_be_forced_per_source() -> None:
     from app.core.config_models import EinkConfig
 
     photo = EinkConfig(profile="photo")
-    assert photo.effective("official") is photo
+    official = photo.effective("official")
+    assert official.profile == "official" and official.saturation == 1.2
     assert EinkConfig().effective("photo").saturation == 0.85
 
 

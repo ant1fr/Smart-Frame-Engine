@@ -139,15 +139,13 @@ class DisplayService:
     ) -> DisplayResult:
         """Render ``data`` (or nothing, for a title card) with a composition template.
 
-        Templates never crop and always use the ``official`` eInk profile (posters and
-        album art are graphic designs, not photos).
+        Templates never crop. With ``auto`` settings, the eInk profile and dithering are
+        chosen from the layout (poster, album cover, title card) and the artwork.
 
         Raises:
             InvalidImageError: If ``data`` is not a supported image.
         """
-        options = RenderOptions.from_config(
-            self._config_store.config, fit="contain", eink_profile="official"
-        )
+        options = RenderOptions.from_config(self._config_store.config, fit="contain")
         return await self._display(
             lambda: render_layout_bytes(data, layout, options), meta, template=layout.name
         )

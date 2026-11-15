@@ -29,8 +29,28 @@ from pydantic import (
 PanelModel = Literal["133", "315"]
 Orientation = Literal["portrait", "landscape"]
 FitMode = Literal["smart_crop", "contain"]
-DitherAlgorithm = Literal["atkinson", "floyd_steinberg"]
-EinkProfile = Literal["official", "photo"]
+#: ``auto`` decides per image (see :mod:`app.processor.auto`); the others are explicit.
+DitherAlgorithm = Literal[
+    "auto",
+    "atkinson",
+    "atkinson-classic",
+    "fs",
+    "floyd_steinberg",  # alias of "fs", kept for existing settings and metadata
+    "fs-serpentine",
+    "stucki",
+    "blue-noise",
+]
+ConcreteDither = Literal[
+    "atkinson",
+    "atkinson-classic",
+    "fs",
+    "floyd_steinberg",
+    "fs-serpentine",
+    "stucki",
+    "blue-noise",
+]
+EinkProfile = Literal["auto", "official", "photo", "soft", "vivid", "natural"]
+ConcreteProfile = Literal["official", "photo", "soft", "vivid", "natural"]
 PowerMode = Literal["continuous", "deepsleep"]
 
 
@@ -362,15 +382,35 @@ PHOTO_PROFILE: Final[dict[str, float | bool]] = {
     "edge_filters": False,
 }
 
+#: ``soft``, ``vivid`` and ``natural`` do their tone and chroma work in
+#: :func:`app.processor.enhance.enhance` (gamut-safe curves), so the plain factors stay neutral.
+CURVE_PROFILE: Final[dict[str, float | bool]] = {
+    "brightness": 1.0,
+    "contrast": 1.0,
+    "saturation": 1.0,
+    "sharpness": 1.0,
+    "edge_filters": False,
+}
+
+PROFILE_VALUES: Final[dict[str, dict[str, float | bool]]] = {
+    "photo": PHOTO_PROFILE,
+    "soft": CURVE_PROFILE,
+    "vivid": CURVE_PROFILE,
+    "natural": CURVE_PROFILE,
+}
+
 
 class EinkConfig(_Section):
     """Color eInk optimization. Defaults mirror the official Fraimic converter."""
 
     profile: EinkProfile = Field(
-        default="official",
-        description="official = the values below (defaults = official converter); photo = softer "
-        "preset for photographs that overrides brightness, contrast, saturation, sharpness "
-        "and edge_filters",
+        default="auto",
+        description="auto = chosen per image from its content (photo, poster, album cover, "
+        "title card) and cheap statistics; official = the values below (defaults = official "
+        "converter); photo = softer preset for photographs; soft / vivid = gamut-safe tone and "
+        "chroma curves (lifted shadows / richer colors); natural = no enhancement. "
+        "Everything but official overrides brightness, contrast, saturation, sharpness and "
+        "edge_filters",
     )
     brightness: float = Field(default=1.1, ge=0.1, le=3.0, description="1.0 = unchanged")
     contrast: float = Field(default=1.2, ge=0.1, le=3.0, description="1.0 = unchanged")
@@ -380,19 +420,42 @@ class EinkConfig(_Section):
         default=True, description="Apply the official edge-enhance / smooth / sharpen chain"
     )
     dither: DitherAlgorithm = Field(
-        default="atkinson",
-        description="atkinson = tuned color metric (official default); floyd_steinberg = classic",
+        default="auto",
+        description="auto = chosen per image (fs-serpentine for detailed photos and posters, "
+        "stucki for smooth skies and gradients, atkinson-classic for graphics and covers); "
+        "atkinson = the official converter's 4-neighbour variant; fs = Floyd-Steinberg; "
+        "fs-serpentine = FS with alternating scan direction; stucki = wide 12-neighbour "
+        "kernel; blue-noise = ordered blue-noise threshold (fastest, grainy)",
     )
+
+    @field_validator("dither", mode="before")
+    @classmethod
+    def _dither_alias(cls, value: object) -> object:
+        return "fs" if value == "floyd_steinberg" else value
 
     def effective(self, profile: EinkProfile | None = None) -> EinkConfig:
         """The values actually used for rendering after applying the profile.
 
+        ``auto`` stays ``auto`` here: the renderer resolves it per image
+        (:mod:`app.processor.auto`) and then calls :meth:`resolved`.
+
         Args:
-            profile: Overrides :attr:`profile` (e.g. a poster source forcing ``official``).
+            profile: Overrides :attr:`profile` (e.g. a source forcing ``official``).
         """
-        if (profile or self.profile) == "official":
+        chosen = profile or self.profile
+        if chosen == "auto":
             return self
-        return self.model_copy(update=PHOTO_PROFILE)
+        return self.resolved(chosen)
+
+    def resolved(self, profile: ConcreteProfile) -> EinkConfig:
+        """This configuration with a concrete ``profile`` applied."""
+        if profile == "official":
+            return (
+                self
+                if self.profile == "official"
+                else self.model_copy(update={"profile": "official"})
+            )
+        return self.model_copy(update={**PROFILE_VALUES[profile], "profile": profile})
 
 
 class QualityConfig(_Section):
