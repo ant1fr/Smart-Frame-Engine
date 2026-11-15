@@ -14,7 +14,13 @@ from app.clients.http_images import USER_AGENT, ImageFetcher
 from app.core.config_store import ConfigStore
 from app.core.security import URLPolicy
 from app.providers.music import ArtworkResolver, MinIntervalLimiter
-from app.providers.music.artwork import artist_match_level, lucene_quote, title_match_level
+from app.providers.music.artwork import (
+    ArtworkMatch,
+    artist_match_level,
+    lucene_quote,
+    sized_cover_url,
+    title_match_level,
+)
 
 DEEZER = "https://api.deezer.com"
 MB = "https://musicbrainz.org/ws/2"
@@ -453,3 +459,46 @@ async def test_the_real_artist_beats_a_tribute_with_the_exact_title(setup: Setup
     )
     assert match is not None and match.url == "https://cdn.test/mix.jpg"
     assert not mb.called  # an edition of the right album by the right artist is a sure match
+
+
+DZ_XL = "https://cdn-images.dzcdn.net/images/cover/abc/1000x1000-000000-80-0-0.jpg"
+DZ_Q100 = "https://cdn-images.dzcdn.net/images/cover/abc/1000x1000-000000-100-0-0.jpg"
+DZ_1400 = "https://cdn-images.dzcdn.net/images/cover/abc/1400x1400-000000-100-0-0.jpg"
+
+
+@pytest.mark.parametrize(
+    ("url", "source", "side", "expected"),
+    [
+        (DZ_XL, "deezer", 984, DZ_Q100),  # same size, without JPEG artifacts
+        (DZ_XL, "deezer", 1181, DZ_1400),  # larger slot (31.5" panel)
+        ("https://cdn.test/a.jpg", "deezer", 984, "https://cdn.test/a.jpg"),
+        (
+            f"{CAA}/release-group/g/front-1200",
+            "musicbrainz",
+            984,
+            f"{CAA}/release-group/g/front-1200",
+        ),
+        (f"{CAA}/release-group/g/front-1200", "musicbrainz", 1268, f"{CAA}/release-group/g/front"),
+    ],
+)
+def test_sized_cover_url(url: str, source: str, side: int, expected: str) -> None:
+    assert sized_cover_url(ArtworkMatch(url, source), side) == expected  # type: ignore[arg-type]
+
+
+@respx.mock
+async def test_find_downloads_the_high_quality_deezer_cover(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(json={"data": [deezer_album("B", "A", DZ_XL)]})
+    q100 = respx.get(DZ_Q100).respond(content=png_bytes((1, 2, 3)))
+    xl = respx.get(DZ_XL).respond(content=png_bytes())
+    artwork = await setup.resolver.find(title="s", artist="A", album="B", min_side=984)
+    assert artwork is not None and artwork.data == png_bytes((1, 2, 3))
+    assert q100.called and not xl.called
+
+
+@respx.mock
+async def test_find_falls_back_to_the_standard_cover_url(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(json={"data": [deezer_album("B", "A", DZ_XL)]})
+    respx.get(DZ_1400).respond(403)
+    respx.get(DZ_XL).respond(content=png_bytes())
+    artwork = await setup.resolver.find(title="s", artist="A", album="B", min_side=1181)
+    assert artwork is not None and artwork.data == png_bytes()

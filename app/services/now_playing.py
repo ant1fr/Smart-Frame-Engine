@@ -31,7 +31,14 @@ from app.core.config_models import MusicConfig
 from app.core.config_store import ConfigStore
 from app.core.security import InvalidImageError, PayloadTooLargeError
 from app.core.text import fold
-from app.processor.templates import AlbumLayout, Layout, TitleCardLayout
+from app.processor.templates import (
+    AlbumLayout,
+    AlbumStyle,
+    Canvas,
+    Layout,
+    TitleCardLayout,
+    album_cover_side,
+)
 from app.providers.music.artwork import ArtworkResolver
 from app.providers.music.models import NowPlayingRequest
 from app.services.current_image import CurrentImageStore
@@ -144,6 +151,12 @@ class NowPlayingService:
         )
         return await self._display.display_layout(data, layout, meta)
 
+    def _cover_side(self, style: AlbumStyle) -> int:
+        """Side (px) of the album cover on the configured panel and orientation."""
+        config = self._config_store.config
+        canvas = Canvas(config.frame_size, config.eink, config.display.safe_margin_px)
+        return album_cover_side(canvas, style)
+
     async def _cover(
         self, request: NowPlayingRequest, config: MusicConfig
     ) -> tuple[bytes | None, ArtworkOrigin]:
@@ -161,7 +174,10 @@ class NowPlayingService:
                 logger.info("Ignoring artwork_url: %s", exc)
         if request.enrich_artwork and config.enrich_artwork:
             artwork = await self._artwork.find(
-                title=request.title, artist=request.artist, album=request.album
+                title=request.title,
+                artist=request.artist,
+                album=request.album,
+                min_side=self._cover_side(request.style or config.default_style),
             )
             if artwork is not None:
                 return artwork.data, artwork.match.source
