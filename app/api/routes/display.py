@@ -48,7 +48,11 @@ async def display_upload(
     file: Annotated[UploadFile, File(description="Image file (max MAX_UPLOAD_MB)")],
     fit: Annotated[FitMode | None, Form(description="Override the default fit mode")] = None,
     push_to_fraimic: Annotated[
-        bool, Form(description="Send the result to the frame (or queue it in deepsleep mode)")
+        bool,
+        Form(
+            description="Send the result to the frame (or queue it in deepsleep mode); "
+            "false only renders a preview (/api/preview.jpg)"
+        ),
     ] = True,
     ephemeral: Annotated[
         bool, Form(description="Temporary push (accepted for symmetry; uploads are never replayed)")

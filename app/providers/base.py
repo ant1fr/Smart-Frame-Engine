@@ -20,6 +20,7 @@ from pydantic import JsonValue
 
 from app.core.config_models import FitMode
 from app.processor.fit import FocusRegion
+from app.processor.templates import Layout
 
 
 class ProviderError(Exception):
@@ -62,6 +63,10 @@ class ImageAsset:
             means "use the configured default".
         regions: Regions of interest (faces) in normalized coordinates, most relevant first.
         taken_at: When the picture was taken, if known (burst cooldown in the history).
+        layout: Composition template (poster, album cover, title card) used instead of a
+            fit mode; ``data`` may then be empty for templates that need no artwork.
+        track_history: Record the display in the anti-repeat history (photos); posters
+            and album covers are shown on demand and are not tracked.
     """
 
     data: bytes = field(repr=False)
@@ -72,6 +77,8 @@ class ImageAsset:
     recommended_fit: FitMode | None = None
     regions: tuple[FocusRegion, ...] = ()
     taken_at: datetime | None = None
+    layout: Layout | None = None
+    track_history: bool = True
 
 
 RequestT = TypeVar("RequestT", contravariant=True)

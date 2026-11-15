@@ -173,7 +173,9 @@ class ImmichDisplayRequest(BaseModel):
     )
     fit: FitMode | None = Field(default=None, description="Override the default fit mode")
     push_to_fraimic: bool = Field(
-        default=True, description="Send the result to the frame (or queue it in deepsleep mode)"
+        default=True,
+        description="Send the result to the frame (or queue it in deepsleep mode); "
+        "false only renders a preview (/api/preview.jpg)",
     )
     ignore_history: bool = Field(
         default=False,

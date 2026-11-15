@@ -60,7 +60,9 @@ class SmartSearchRequest(BaseModel):
     taken_after: AwareDatetime | None = None
     taken_before: AwareDatetime | None = None
     fit: FitMode | None = None
-    push_to_fraimic: bool = True
+    push_to_fraimic: bool = Field(
+        default=True, description="Send to the frame; false only renders a preview"
+    )
     ephemeral: bool = Field(
         default=True,
         description="Temporary push: not stored as the rule replayed by POST /api/refresh",
