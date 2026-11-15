@@ -13,6 +13,7 @@ from app.providers.immich import ImmichProvider, PeopleDirectory
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
+from app.services.ephemeral import EphemeralService
 from app.services.scheduler import SchedulerService
 
 
@@ -56,6 +57,11 @@ def get_scheduler_service(request: Request) -> SchedulerService:
     return cast(SchedulerService, request.app.state.scheduler_service)
 
 
+def get_ephemeral_service(request: Request) -> EphemeralService:
+    """Lifetime manager of ephemeral images (expiry, cancellation, revert)."""
+    return cast(EphemeralService, request.app.state.ephemeral_service)
+
+
 def get_people_directory(request: Request) -> PeopleDirectory:
     """Cache of the people known to each Immich account."""
     return cast(PeopleDirectory, request.app.state.people_directory)
@@ -70,3 +76,4 @@ DisplayServiceDep = Annotated[DisplayService, Depends(get_display_service)]
 ImmichProviderDep = Annotated[ImmichProvider, Depends(get_immich_provider)]
 PeopleDirectoryDep = Annotated[PeopleDirectory, Depends(get_people_directory)]
 SchedulerDep = Annotated[SchedulerService, Depends(get_scheduler_service)]
+EphemeralServiceDep = Annotated[EphemeralService, Depends(get_ephemeral_service)]

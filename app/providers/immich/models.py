@@ -195,7 +195,8 @@ class ImmichDisplayRequest(BaseModel):
     ephemeral: bool = Field(
         default=False,
         description="Temporary push: do not make this request the rule replayed by "
-        "POST /api/refresh when nothing is pinned",
+        "POST /api/refresh when nothing is pinned, nor the image restored after "
+        "DELETE /api/queue/ephemeral",
     )
     hold_minutes: int | None = Field(
         default=None,

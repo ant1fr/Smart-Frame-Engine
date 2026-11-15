@@ -24,6 +24,7 @@ from app.api.routes import display as display_routes
 from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
 from app.api.routes import immich as immich_routes
+from app.api.routes import queue as queue_routes
 from app.api.routes import refresh as refresh_routes
 from app.api.routes import smart_mix as smart_mix_routes
 from app.api.routes import system as system_routes
@@ -40,6 +41,7 @@ from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
+from app.services.ephemeral import EphemeralService
 from app.services.scheduler import SchedulerService, immich_runner
 
 logger = logging.getLogger(__name__)
@@ -117,6 +119,13 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             has_pending=lambda: delivery.pending is not None,
         )
         scheduler.load()
+        ephemeral = EphemeralService(
+            current_store,
+            display,
+            delivery,
+            clear_hold=scheduler.clear_hold,
+            refresh=lambda: scheduler.run_in_background("revert"),
+        )
 
         app.state.config_store = config_store
         app.state.history_store = history_store
@@ -126,7 +135,9 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         app.state.people_directory = people
         app.state.immich_provider = immich
         app.state.scheduler_service = scheduler
+        app.state.ephemeral_service = ephemeral
 
+        await ephemeral.start()  # before the delivery worker can drop an expired image
         await delivery.start()
         await scheduler.start()
         config = config_store.config
@@ -146,6 +157,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             yield
         finally:
             await scheduler.stop()
+            await ephemeral.stop()
             await delivery.stop()
             logger.info("Smart Frame Engine stopped")
 
@@ -200,6 +212,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(smart_mix_routes.display_router)
     app.include_router(smart_mix_routes.router)
     app.include_router(fraimic_routes.router)
+    app.include_router(queue_routes.router)
 
     @app.get("/", include_in_schema=False)
     async def index(request: Request) -> RedirectResponse:

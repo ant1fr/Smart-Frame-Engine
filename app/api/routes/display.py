@@ -55,7 +55,11 @@ async def display_upload(
         ),
     ] = True,
     ephemeral: Annotated[
-        bool, Form(description="Temporary push (accepted for symmetry; uploads are never replayed)")
+        bool,
+        Form(
+            description="Temporary push: the previous image comes back after "
+            "DELETE /api/queue/ephemeral (uploads are never replayed)"
+        ),
     ] = False,
     hold_minutes: Annotated[
         int | None,
@@ -86,6 +90,7 @@ async def display_upload(
             details={"filename": title, "bytes": len(data)},
             fit=fit,
             push=push_to_fraimic,
+            ephemeral=ephemeral,
         )
     except InvalidImageError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc

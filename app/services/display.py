@@ -75,6 +75,9 @@ class RevertOutcome(BaseModel):
 
     reverted: bool = Field(description="current.* now shows the previous image again")
     has_base: bool = Field(description="Whether a previous non-ephemeral image exists")
+    stale: bool = Field(
+        default=False, description="Nothing done: a newer image replaced the expected one"
+    )
     pushed_base: bool = Field(
         default=False, description="The previous image was re-sent (or queued) for the frame"
     )
@@ -261,7 +264,9 @@ class DisplayService:
             if only_if_current is not None and (
                 current is None or current.sha256 != only_if_current
             ):
-                return RevertOutcome(reverted=False, has_base=base is not None, image=current)
+                return RevertOutcome(
+                    reverted=False, has_base=base is not None, stale=True, image=current
+                )
             if base is None:
                 return RevertOutcome(reverted=False, has_base=False, image=current)
             restored = await asyncio.to_thread(self._current.restore_base)
@@ -272,7 +277,11 @@ class DisplayService:
         delivery: DeliveryOutcome | None = None
         panel_ok = meta.panel == self._config_store.config.fraimic.panel
         if panel_ok and self._delivery.frame_content_differs(meta.sha256):
-            delivery = await self._delivery.submit(data, source=meta.source, title=meta.title)
+            # Queue and wake the worker rather than uploading inline: callers (a Home
+            # Assistant webhook) must not wait for a full upload.
+            delivery = await self._delivery.submit(
+                data, source=meta.source, title=meta.title, immediate=False
+            )
         elif not panel_ok:
             logger.warning("The previous image was rendered for panel %s; not re-sent", meta.panel)
         self._notify(restored)

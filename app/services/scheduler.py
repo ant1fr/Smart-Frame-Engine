@@ -29,6 +29,7 @@ ignore quiet hours and the pending check, and share a lock with scheduled ones.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -58,7 +59,7 @@ JOB_ID: Final = "refresh"
 DEFAULT_MIN_DELAY_S: Final = 30.0
 _MAX_BACKOFF_EXPONENT: Final = 16
 
-RefreshReason = Literal["scheduled", "manual"]
+RefreshReason = Literal["scheduled", "manual", "revert"]
 RunStatus = Literal["ok", "failed", "skipped"]
 RuleSource = Literal["pinned", "smart_mix", "last"]
 Clock = Callable[[], datetime]
@@ -272,6 +273,7 @@ class SchedulerService:
         self._scheduler: AsyncIOScheduler | None = None
         self._next_run_at: datetime | None = None
         self._listening = False
+        self._background: set[asyncio.Task[None]] = set()
 
     # --- Lifecycle ----------------------------------------------------------------------
     def load(self) -> SchedulerState:
@@ -300,6 +302,12 @@ class SchedulerService:
 
     async def stop(self) -> None:
         """Stop the timer (a refresh in progress is cancelled)."""
+        for task in list(self._background):
+            task.cancel()
+        for task in list(self._background):
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._background.clear()
         scheduler, self._scheduler = self._scheduler, None
         if scheduler is not None and scheduler.running:
             scheduler.shutdown(wait=False)
@@ -511,6 +519,36 @@ class SchedulerService:
             update["hold_until"] = now + timedelta(minutes=hold_minutes)
         await self._save(**update)
         self._arm()
+
+    async def clear_hold(self) -> None:
+        """Lift the protection of a pushed image (e.g. an ephemeral image was reverted)."""
+        if self._state.hold_until is None:
+            return
+        await self._save(hold_until=None)
+        self._arm()
+
+    def run_in_background(self, reason: RefreshReason = "revert") -> bool:
+        """Start :meth:`run` without waiting; failures are logged, never raised.
+
+        Returns:
+            Whether a refresh was started (``False`` while one is already running).
+        """
+        if self._lock.locked():
+            return False
+        task = asyncio.create_task(self._run_quietly(reason), name=f"refresh-{reason}")
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+        return True
+
+    async def _run_quietly(self, reason: RefreshReason) -> None:
+        try:
+            await self.run(reason)
+        except asyncio.CancelledError:
+            raise
+        except (RefreshError, ProviderError, InvalidImageError) as exc:
+            logger.info("Background refresh (%s) did not run: %s", reason, _safe_detail(exc))
+        except Exception:
+            logger.exception("Background refresh (%s) failed", reason)
 
     async def set_context(self, context: MixContext | None) -> None:
         """Set (or clear with ``None``) the temporary Smart Mix boost."""
