@@ -12,7 +12,7 @@ from tests.conftest import SettingsFactory
 def test_defaults(make_settings: SettingsFactory, data_dir: Path) -> None:
     settings = make_settings()
     assert settings.data_dir == data_dir
-    assert settings.port == 8000
+    assert settings.port == 8080
     assert settings.auth_enabled is False
     assert settings.public_image_endpoints is True
     assert settings.root_path == ""

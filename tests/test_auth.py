@@ -85,7 +85,7 @@ def test_protected_routes_require_key(make_client: ClientFactory) -> None:
 
     denied = client.get("/api/config")
     assert denied.status_code == 401
-    assert denied.json() == {"detail": "Missing or invalid API key"}
+    assert denied.json() == {"detail": "Missing or invalid API key or session"}
     assert denied.headers["www-authenticate"].startswith("APIKey")
 
     assert client.get("/api/config", headers={"X-API-Key": "wrong"}).status_code == 401

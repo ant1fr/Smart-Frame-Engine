@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app import __version__
+from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
 from app.api.routes import display as display_routes
 from app.api.routes import fraimic as fraimic_routes
@@ -31,13 +32,14 @@ from app.api.routes import smart_mix as smart_mix_routes
 from app.api.routes import system as system_routes
 from app.api.routes import tmdb as tmdb_routes
 from app.clients.http_images import ImageFetcher
-from app.core.auth import APIKeyMiddleware
+from app.core.auth import AuthMiddleware, AuthState
 from app.core.config_models import RuntimeConfig
 from app.core.config_store import ConfigStore
 from app.core.history_store import HistoryStore
 from app.core.limits import MULTIPART_OVERHEAD_BYTES, BodySizeLimitMiddleware
 from app.core.logging_config import masking_filter, setup_logging
 from app.core.proxy import RootPathMiddleware
+from app.core.secrets_store import SecretsStore
 from app.core.security import URLPolicy
 from app.core.settings import EnvSettings, get_env_settings
 from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
@@ -56,8 +58,10 @@ API_DESCRIPTION = """
 Fetch images from modular sources (Immich, TMDB posters, URLs), optimize them for a
 color eInk panel and push them to a Fraimic frame.
 
-**Authentication:** when `APP_API_KEY` is set, every `POST`/`PUT`/`DELETE` route and
-`/api/config` require the `X-API-Key` header (or `?api_key=`). Use **Authorize** above.
+**Authentication:** with `ADMIN_PASSWORD` set, every route except `/api/health`, the login
+and the public images needs a web UI session or the API key. With only `APP_API_KEY`, every
+`POST`/`PUT`/`DELETE` route and `/api/config` need the key. Send it as `X-API-Key`,
+`Authorization: Bearer <key>` or `?api_key=`; use **Authorize** above.
 """
 
 
@@ -84,11 +88,21 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         settings: Environment settings; defaults to :func:`get_env_settings`.
     """
     settings = settings or get_env_settings()
+    auth_state = AuthState(
+        SecretsStore(
+            settings.secrets_path,
+            env_api_key=settings.api_key,
+            env_session_secret=settings.session_secret.get_secret_value(),
+        ),
+        password=settings.password,
+        session_ttl_s=settings.session_ttl_hours * 3600,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         setup_logging(settings.log_level)
         _prepare_data_dir(settings)
+        auth_state.load()
 
         config_store = ConfigStore(settings.config_path, settings.runtime_seed())
         config_store.load()
@@ -96,7 +110,15 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         history_store.load()
 
         def _refresh_masked_secrets() -> None:
-            masking_filter.set_secrets([*settings.secret_values(), *config_store.secret_values()])
+            masking_filter.set_secrets(
+                [
+                    *settings.secret_values(),
+                    *config_store.secret_values(),
+                    *auth_state.secrets.values(),
+                ]
+            )
+
+        app.state.refresh_masked_secrets = _refresh_masked_secrets
 
         async def _on_config_change(_: RuntimeConfig) -> None:
             _refresh_masked_secrets()
@@ -170,7 +192,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             "power_mode=%s, pending=%s, scheduler=%s)",
             __version__,
             settings.data_dir,
-            "enabled" if settings.auth_enabled else "disabled",
+            auth_state.mode,
             settings.root_path,
             config.fraimic.panel,
             config.fraimic.power_mode,
@@ -194,6 +216,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.auth_state = auth_state
     app.state.started_at = time.monotonic()
 
     # Middleware added last runs first. Order (outermost first):
@@ -201,8 +224,8 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     # CORS wraps auth so 401 responses keep CORS headers; RootPath must run before auth
     # so protected paths are recognized under a sub-path.
     app.add_middleware(
-        APIKeyMiddleware,
-        api_key=settings.api_key,
+        AuthMiddleware,
+        state=auth_state,
         public_image_endpoints=settings.public_image_endpoints,
     )
     origins = settings.cors_origin_list
@@ -228,6 +251,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         ]
         return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
 
+    app.include_router(auth_routes.router)
     app.include_router(system_routes.router)
     app.include_router(config_routes.router)
     app.include_router(image_routes.router)

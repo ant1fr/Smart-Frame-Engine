@@ -74,14 +74,14 @@ jobs:
 
       - name: Smoke test
         run: |
-          docker run -d --name sfe -p 8000:8000 -e APP_API_KEY=ci-key smart-frame-engine:ci
+          docker run -d --name sfe -p 8080:8080 -e APP_API_KEY=ci-key smart-frame-engine:ci
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/api/health; then break; fi
+            if curl -fsS http://127.0.0.1:8080/api/health; then break; fi
             sleep 1
           done
           echo
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/config)" = "401"
-          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-API-Key: ci-key' http://127.0.0.1:8000/api/config)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/config)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-API-Key: ci-key' http://127.0.0.1:8080/api/config)" = "200"
           test "$(docker exec sfe id -u)" = "1000"
 
       - name: Container logs

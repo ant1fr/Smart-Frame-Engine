@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DATA_DIR=/data \
-    PORT=8000
+    PORT=8080
 
 WORKDIR /app
 
@@ -41,9 +41,9 @@ RUN mkdir -p /app/.numba_cache && chown app:app /app/.numba_cache
 USER app
 RUN python -c "from app.processor.dither import warm_up; warm_up()"
 VOLUME ["/data"]
-EXPOSE 8000
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', '8000'), timeout=4)"]
+  CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', '8080'), timeout=4)"]
 
 CMD ["python", "-m", "app"]

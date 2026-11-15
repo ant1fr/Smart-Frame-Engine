@@ -40,12 +40,24 @@ class EnvSettings(BaseSettings):
     # --- Infrastructure -------------------------------------------------------
     data_dir: Path = Field(default=Path("/data"), description="Persistent data directory")
     host: str = Field(default="0.0.0.0", description="Bind address")  # noqa: S104
-    port: int = Field(default=8000, ge=1, le=65535, description="Bind port")
+    port: int = Field(default=8080, ge=1, le=65535, description="Bind port")
     log_level: LogLevel = Field(default="INFO", description="Python log level")
 
     app_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="When set, mutating routes and /api/config require X-API-Key",
+    )
+    admin_password: SecretStr = Field(
+        default=SecretStr(""),
+        description="Password of the 'admin' web UI login. When set, every route except "
+        "/api/health, the public image endpoints and the login needs a session or the API key",
+    )
+    session_ttl_hours: float = Field(
+        default=168.0, gt=0, le=8760, description="Lifetime of a web UI login session"
+    )
+    session_secret: SecretStr = Field(
+        default=SecretStr(""),
+        description="Key signing the session cookies (generated into /data/secrets.json if empty)",
     )
     public_image_endpoints: bool = Field(
         default=True,
@@ -136,9 +148,14 @@ class EnvSettings(BaseSettings):
         return self.app_api_key.get_secret_value().strip()
 
     @property
+    def password(self) -> str:
+        """The admin web UI password (empty string when the login is disabled)."""
+        return self.admin_password.get_secret_value()
+
+    @property
     def auth_enabled(self) -> bool:
-        """Whether API key authentication is enforced."""
-        return bool(self.api_key)
+        """Whether authentication is configured in the environment (key or password)."""
+        return bool(self.api_key or self.password)
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -186,13 +203,18 @@ class EnvSettings(BaseSettings):
         return self.data_dir / "last_delivery.json"
 
     @property
+    def secrets_path(self) -> Path:
+        """Generated secrets (API key, session signing key), readable by the owner only."""
+        return self.data_dir / "secrets.json"
+
+    @property
     def scheduler_state_path(self) -> Path:
         """Location of the scheduler state (replayable rule, timer, last run)."""
         return self.data_dir / "scheduler_state.json"
 
     def secret_values(self) -> list[str]:
         """All secret values provided through the environment (for log masking)."""
-        values = [self.api_key]
+        values = [self.api_key, self.password, self.session_secret.get_secret_value()]
         for secret in (self.immich_api_key, self.tmdb_api_key):
             if secret is not None:
                 values.append(secret.get_secret_value())
