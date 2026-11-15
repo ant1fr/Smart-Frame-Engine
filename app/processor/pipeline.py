@@ -10,6 +10,10 @@ Steps:
    degrees counter-clockwise), then dither it (Atkinson or Floyd-Steinberg, tuned metric).
 4. Pack the ``.bin``; the preview indices are rotated back to viewing orientation.
 
+Composition templates (``poster``, ``album``, ``title_card``; see
+:mod:`app.processor.templates`) replace step 2 via :func:`render_layout`; steps 3-4 are
+shared through :func:`finalize`.
+
 Rendering is CPU-bound and synchronous; call it through ``asyncio.to_thread``.
 """
 
@@ -40,6 +44,7 @@ from app.processor.fit import (
 )
 from app.processor.packing import encode_bin
 from app.processor.palette import PALETTE_RGB
+from app.processor.templates import Canvas, Layout, compose_layout
 
 Rotation = Literal[0, 90, 270]
 PREVIEW_JPEG_QUALITY = 90
@@ -174,11 +179,15 @@ def compose(
     return paste_centered(background, picture)
 
 
-def render(
-    image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
-) -> RenderResult:
-    """Compose, dither and encode ``image`` for the configured panel."""
-    composed = compose(image.convert("RGB"), options, regions)
+def finalize(composed: Image.Image, options: RenderOptions) -> RenderResult:
+    """Rotate, dither and encode a frame-sized composition (viewing orientation).
+
+    Raises:
+        ValueError: If ``composed`` does not have the frame size of ``options``.
+    """
+    if composed.size != options.frame_size:
+        raise ValueError(f"Composition is {composed.size}, expected {options.frame_size}")
+    composed = composed.convert("RGB")
     quarter_turns = options.rotation // 90
     # Rotate *before* dithering, like the official converter's ``--fit rotate``: error
     # diffusion scans the panel's native portrait buffer, so the ``.bin`` is byte-identical.
@@ -194,6 +203,38 @@ def render(
         indices=indices,
         bin=encode_bin(portrait, options.panel),
     )
+
+
+def render(
+    image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
+) -> RenderResult:
+    """Compose, dither and encode ``image`` for the configured panel."""
+    return finalize(compose(image.convert("RGB"), options, regions), options)
+
+
+def canvas_for(options: RenderOptions) -> Canvas:
+    """The template canvas matching ``options``."""
+    return Canvas(options.frame_size, options.eink, options.safe_margin_px)
+
+
+def render_layout(
+    image: Image.Image | None, layout: Layout, options: RenderOptions
+) -> RenderResult:
+    """Compose ``image`` with a template (never cropped), then dither and encode it.
+
+    Raises:
+        ValueError: If the layout needs artwork and ``image`` is ``None``.
+    """
+    return finalize(compose_layout(image, layout, canvas_for(options)), options)
+
+
+def render_layout_bytes(data: bytes | None, layout: Layout, options: RenderOptions) -> RenderResult:
+    """Decode untrusted bytes (if any) and :func:`render_layout` them.
+
+    Raises:
+        InvalidImageError: If ``data`` is not a supported image.
+    """
+    return render_layout(decode_image(data) if data is not None else None, layout, options)
 
 
 def render_bytes(

@@ -51,7 +51,7 @@ Issues = "https://github.com/ant1fr/Smart-Frame-Engine/issues"
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["py.typed", "templates/*.html"]
+app = ["py.typed", "templates/*.html", "assets/fonts/*.ttf", "assets/fonts/*.txt"]
 
 # --- Ruff -----------------------------------------------------------------------
 [tool.ruff]
