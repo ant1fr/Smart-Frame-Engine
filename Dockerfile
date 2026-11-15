@@ -32,7 +32,14 @@ COPY README.md LICENSE ./
 COPY app ./app
 RUN pip install --no-deps .
 
+# numba compiles the dithering kernels on first use (seconds on a Raspberry Pi). Compile them
+# at build time into an image-local cache so the first render is fast; the app user may
+# refresh it, and DATA_DIR/.numba_cache is the fallback outside Docker.
+ENV NUMBA_CACHE_DIR=/app/.numba_cache
+RUN mkdir -p /app/.numba_cache && chown app:app /app/.numba_cache
+
 USER app
+RUN python -c "from app.processor.dither import warm_up; warm_up()"
 VOLUME ["/data"]
 EXPOSE 8000
 

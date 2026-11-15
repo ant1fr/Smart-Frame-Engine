@@ -13,6 +13,8 @@ from app.processor.pipeline import RenderOptions, compose, render, render_bytes
 from tests.reference import fraimic_converter as ref
 
 RED, WHITE = 3, 1
+#: The official converter's look; the default settings choose per image (``auto``).
+OFFICIAL_EINK = {"profile": "official", "dither": "atkinson"}
 
 
 def config(**sections: Any) -> RuntimeConfig:
@@ -26,6 +28,7 @@ def neutral_eink() -> dict[str, Any]:
         "contrast": 1.0,
         "saturation": 1.0,
         "edge_filters": False,
+        "profile": "official",  # not "auto": these tests check geometry, not the look
         "dither": "floyd_steinberg",
     }
 
@@ -105,7 +108,10 @@ def test_contain_compose_equals_official_letterbox_pipeline() -> None:
     rng = np.random.default_rng(8)
     image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))
     options = RenderOptions.from_config(
-        config(display={"default_fit": "contain", "contain_background": "black"})
+        config(
+            display={"default_fit": "contain", "contain_background": "black"},
+            eink=OFFICIAL_EINK,
+        )
     )
     panel = ref.Panel(1200, 1600)
     expected = ref.pad_to_frame(
@@ -117,7 +123,9 @@ def test_contain_compose_equals_official_letterbox_pipeline() -> None:
 def test_smart_crop_compose_equals_official_crop_pipeline() -> None:
     rng = np.random.default_rng(9)
     image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))
-    options = RenderOptions.from_config(config(display={"default_fit": "smart_crop"}))
+    options = RenderOptions.from_config(
+        config(display={"default_fit": "smart_crop"}, eink=OFFICIAL_EINK)
+    )
     expected = ref.enhance(ref.scale_to_frame(image, "crop", ref.Panel(1200, 1600)))
     assert np.array_equal(np.asarray(compose(image, options)), np.asarray(expected))
 
@@ -171,6 +179,7 @@ def _official_rotate_image(image: Image.Image, background: tuple[int, int, int])
 
 
 def _landscape_options(**eink: Any) -> RenderOptions:
+    eink = {**OFFICIAL_EINK, **eink}
     return RenderOptions.from_config(
         config(
             display={

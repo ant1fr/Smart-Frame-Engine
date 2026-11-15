@@ -341,3 +341,23 @@ def test_preview_endpoints_serve_the_latest_render(make_client: ClientFactory) -
     assert png.status_code == 200 and png.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert client.head("/api/preview.jpg").status_code == 200
     assert client.get("/api/status").json()["current_image"] is None
+
+
+def test_status_explains_the_render_decision(make_client: ClientFactory) -> None:
+    client = make_client()
+    upload(client)
+    render = client.get("/api/status").json()["current_image"]["render"]
+    assert render["context"] == "photo" and render["automatic"] is True
+    assert render["profile"] in {"official", "photo", "soft", "vivid", "natural"}
+    assert render["dither"] in {"fs", "fs-serpentine", "stucki", "atkinson-classic"}
+    assert len(render["reasons"]) == 2
+
+    assert (
+        client.put(
+            "/api/config", json={"eink": {"profile": "official", "dither": "atkinson"}}
+        ).status_code
+        == 200
+    )
+    upload(client)
+    manual = client.get("/api/status").json()["current_image"]
+    assert manual["dither"] == "atkinson" and manual["render"]["automatic"] is False

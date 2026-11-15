@@ -28,21 +28,71 @@ takes precedence over built-in defaults. `POST /api/config/reset` removes saved 
 ## eInk pipeline
 
 Images are fitted to the panel (`smart_crop` around faces, or `contain` on a blurred /
-black / white background), enhanced (brightness 1.1, contrast 1.2, saturation 1.2,
-edge-enhance, smooth, sharpen) and dithered onto the 6-color Spectra 6 palette with
-the official tuned color metric. Dithering is vectorized along anti-diagonals: the
-Atkinson output is byte-identical to the official Fraimic converter while running in
-about 0.7 s (13.3") / 1.1 s (31.5") instead of ~40 s. Landscape mode rotates the image
-into the panel's portrait buffer *before* dithering, like the official `--fit rotate`,
-so its `.bin` is byte-identical too. HEIC/HEIF (iPhone) images decode natively.
+black / white background), enhanced and dithered onto the 6-color Spectra 6 palette with
+the official tuned color metric. Landscape mode rotates the image into the panel's portrait
+buffer *before* dithering, like the official `--fit rotate`, so its `.bin` is
+byte-identical too. HEIC/HEIF (iPhone) images decode natively. Every `.bin` is checked
+against the panel specification before it is stored (exact size, only valid palette codes,
+the `0x11` padding of the 31.5" IC4/IC8 blocks).
 
-**Photos vs the official look.** The official settings (contrast and saturation +20%,
-edge-enhance/sharpen chain) suit posters and graphics, but make dim indoor photos look
-outlined, over-saturated and grainy on the panel. Set `eink.profile` to `photo` for a softer
-result (no edge filters, saturation 0.85, sharpness 0.8, brightness and contrast 1.0; dithering
-stays as configured). `official` (default) keeps the values of the `eink` fields, whose
-defaults are the official converter's. Tested on a real 13.3" panel: lifting brightness,
-white-balance correction and dither jitter did not improve on it.
+**Automatic look (default).** Nobody should have to tune a profile or a dithering algorithm
+per image: `eink.profile` and `eink.dither` default to `auto`, and the engine decides from
+the kind of image (photo, movie poster, album cover, title card) and a few cheap statistics
+of a 256 px thumbnail (a few milliseconds):
+
+| Image | Profile | Dithering |
+| --- | --- | --- |
+| Title card | `natural` | `atkinson-classic` |
+| Graphic: an album cover with very few colors or large flat areas, a poster with very few colors | `official` | `atkinson-classic` |
+| Album cover | `soft` | `atkinson-classic` (flat lettering must not smear) |
+| Poster with bright highlights or strong contrast | `photo` (deep blacks, rich colors, natural skin) | `fs-serpentine` |
+| Flat or muted poster | `vivid` | `fs-serpentine` |
+| Dark photo | `soft` (lifted shadows) | `fs-serpentine` |
+| Bright photo without blacks (snow, beach, fog) | `vivid` (keeps the whites) | `fs-serpentine` |
+| Low-contrast photo | `soft` | `fs-serpentine` |
+| Photo with large smooth regions (sky, fog) | `photo` | `stucki` |
+| Other photos | `photo` | `fs-serpentine` |
+
+A photo is never treated as a graphic, however flat its background: a night shot with a big
+black sky or a snowfield is still a photograph.
+
+An explicit value always wins and `auto` only fills in the rest. `GET /api/status` reports
+what was used and why in `current_image.render` (`profile`, `dither`, `reasons`).
+
+| `eink.profile` | Look |
+| --- | --- |
+| `auto` | Chosen per image (above) |
+| `official` | The official converter: the `eink` brightness / contrast / saturation / sharpness / `edge_filters` fields (defaults +10% / +20% / +20%, edge-enhance, smooth, sharpen) |
+| `photo` | Softer preset tuned on a real panel: no edge filters, saturation 0.85, sharpness 0.8 |
+| `soft` | Gamut-safe curve: lifted shadows, restrained highlights, no clipping |
+| `vivid` | Gamut-safe curve: stronger contrast, richer color, gradual highlight roll-off |
+| `natural` | No enhancement |
+
+`soft` and `vivid` work on luminance in floating point and compress chroma toward it only
+where it would leave the RGB gamut (one scale for all channels, so hue is kept instead of
+clipping individual channels); adapted from the MIT-licensed stillroom
+converter (© Fraimic).
+
+| `eink.dither` | Algorithm | 13.3" |
+| --- | --- | --- |
+| `atkinson` | The official converter's 4-neighbour Atkinson, **byte-identical** to it | 0.7 s |
+| `atkinson-classic` | Original 6-neighbour Atkinson (3/4 of the error): crisp edges, clean flats | 0.8 s |
+| `fs` | Floyd-Steinberg | 0.7 s |
+| `fs-serpentine` | Floyd-Steinberg with alternating scan direction: no directional "worm" patterns | 0.05 s |
+| `stucki` | Wide 12-neighbour kernel: smoother skies and gradients | 0.06 s |
+| `blue-noise` | Ordered blue-noise threshold (a bundled tileable tile): film-grain look, no diffusion | 0.03 s |
+
+Error diffusion is sequential, but the plain kernels run along anti-diagonals in vectorized
+NumPy (about 0.7 s instead of ~40 s). Serpentine scanning cannot be vectorized that way, so
+`fs-serpentine` and `stucki` run as [numba](https://numba.pydata.org)-compiled loops (x86
+timings; a Raspberry Pi is roughly 5-10x slower and still well under a second). The kernels
+are compiled at Docker build time (`NUMBA_CACHE_DIR=/app/.numba_cache`; outside Docker the
+cache goes to `DATA_DIR/.numba_cache`). If numba cannot be imported, `stucki` falls back to
+the NumPy path and `fs-serpentine` to `fs`, with a warning. `floyd_steinberg` is still
+accepted as an alias of `fs`.
+
+Compare the previous look with `auto` side by side on your own photos with
+`python scripts/quality_ab.py` (see [Development](#development)).
 
 If a mat or bezel hides the panel edges, set `display.safe_margin_px` (default `0`):
 the picture is inset by that many pixels on every side and the margin is filled with
@@ -569,6 +619,12 @@ ruff check . && ruff format --check . && mypy app && pytest
 DATA_DIR=./data python -m app      # serve on http://localhost:8000
 ```
 
+`python scripts/quality_ab.py` renders a dark photo, a bright photo, a poster and an album
+cover with the previous look (official + atkinson) and with `auto`, side by side (composition
+and dithered), into `preview_gallery/quality-ab/`; `--dark`/`--bright` take your own photos,
+otherwise a CLIP search on Immich is used. `python scripts/preview_gallery.py` renders posters
+and covers on all four frame layouts.
+
 `python scripts/template_samples.py` renders 8 movie posters and 8 album covers with the
 templates (composition and dithered panel simulation, plus contact sheets) into
 `data/template-samples/`, using the real TMDB / Deezer / MusicBrainz lookups but never
@@ -580,6 +636,9 @@ The palette, color metric, Atkinson kernel and `.bin` layouts follow the officia
 [Fraimic Bin Converter](https://github.com/Fraimic/fraimic_bin_converter) (MIT), which
 builds on Toon-nooT's
 [PhotoPainter Spectra 6 converter](https://github.com/Toon-nooT/PhotoPainter-E-Ink-Spectra-6-image-converter).
+
+The `soft` / `vivid` curves and the dithering kernels follow the MIT-licensed
+stillroom converter (© 2026 Fraimic).
 
 Templates use the [Inter](https://github.com/rsms/inter) typeface by Rasmus Andersson,
 bundled under the SIL Open Font License 1.1 (`app/assets/fonts/OFL.txt`).
