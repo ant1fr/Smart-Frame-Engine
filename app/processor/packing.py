@@ -114,6 +114,47 @@ def unpack_el315(data: UInt8Array) -> UInt8Array:
     return np.flipud(np.concatenate(halves, axis=0))
 
 
+#: Bytes whose two nibbles are both valid device codes (``0x11`` is the EL315 padding).
+_VALID_BYTES: Final = np.zeros(256, dtype=bool)
+for _high in DEVICE_CODES:
+    for _low in DEVICE_CODES:
+        _VALID_BYTES[(int(_high) << 4) | int(_low)] = True
+
+#: EL315 IC blocks whose rows end in padding, and where the padding starts in a row.
+EL315_PADDED_BLOCKS: Final = (3, 7)  # IC4 and IC8
+EL315_PADDING_START: Final = EL315_PADDED_PIXELS // 2
+EL315_ROW_BYTES: Final = EL315_BLOCK_PIXELS // 2
+PADDING_BYTE: Final = (WHITE_CODE << 4) | WHITE_CODE
+
+
+def verify_bin(data: bytes, spec: PanelSpec) -> None:
+    """Check ``data`` against the panel's ``.bin`` compliance checklist.
+
+    Covers the checks that can be made without knowing the image: the exact size (no header
+    or footer), only valid device-code nibbles ``{0x0,0x1,0x2,0x3,0x5,0x6}``, and, for the
+    EL315, the ``0x11`` white padding in every row of IC4 and IC8 (bytes ``[80:400]``).
+    The pixel layout itself is covered by the byte-for-byte tests against the official
+    converter and the specifications' worked examples.
+
+    Raises:
+        BinFormatError: On the first violated rule.
+    """
+    if len(data) != spec.bin_size:
+        raise BinFormatError(f"{spec.label} .bin must be {spec.bin_size} bytes, got {len(data)}")
+    raw = np.frombuffer(data, dtype=np.uint8)
+    if not bool(_VALID_BYTES[raw].all()):
+        raise BinFormatError("The .bin contains nibbles outside {0x0,0x1,0x2,0x3,0x5,0x6}")
+    if spec.key == "315":
+        blocks = raw.reshape(8, EL315_BLOCK_ROWS, EL315_ROW_BYTES)
+        for block in EL315_PADDED_BLOCKS:
+            padding = blocks[block, :, EL315_PADDING_START:]
+            if not bool((padding == PADDING_BYTE).all()):
+                raise BinFormatError(
+                    f"IC{block + 1} rows must end with 0x11 padding (bytes "
+                    f"[{EL315_PADDING_START}:{EL315_ROW_BYTES}])"
+                )
+
+
 PACKERS: Final[dict[PanelModel, Callable[[UInt8Array], UInt8Array]]] = {
     "133": pack_el133uf1,
     "315": pack_el315,
@@ -144,9 +185,9 @@ def encode_bin(indices: UInt8Array, spec: PanelSpec) -> bytes:
         raise BinFormatError("Palette indices must be in 0..5")
     codes = DEVICE_CODES[indices.astype(np.intp, copy=False)]
     packed = PACKERS[spec.key](codes)
-    if packed.size != spec.bin_size:
-        raise BinFormatError(f"Encoded {packed.size} bytes, expected exactly {spec.bin_size}")
-    return packed.tobytes()
+    data = packed.tobytes()
+    verify_bin(data, spec)
+    return data
 
 
 def decode_bin(data: bytes, spec: PanelSpec) -> UInt8Array:
