@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.core.config_models import FitMode
 
@@ -73,6 +74,11 @@ class FaceDto(_Dto):
     person: PersonDto | None = None
 
 
+def _utc_iso(moment: datetime) -> str:
+    """ISO 8601 UTC timestamp (``...Z``) as Immich expects for date filters."""
+    return moment.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 @dataclass(frozen=True, slots=True)
 class SearchFilters:
     """Filters shared by the random and smart search endpoints."""
@@ -81,6 +87,8 @@ class SearchFilters:
     album_ids: tuple[str, ...] = ()
     favorites_only: bool = False
     exclude_archived: bool = True
+    taken_after: datetime | None = None
+    taken_before: datetime | None = None
 
     def body(self, size: int) -> dict[str, object]:
         """JSON body for ``/search/random`` and ``/search/smart``."""
@@ -93,6 +101,10 @@ class SearchFilters:
             body["isFavorite"] = True
         if self.exclude_archived:
             body["visibility"] = "timeline"
+        if self.taken_after is not None:
+            body["takenAfter"] = _utc_iso(self.taken_after)
+        if self.taken_before is not None:
+            body["takenBefore"] = _utc_iso(self.taken_before)
         return body
 
 
@@ -104,6 +116,26 @@ class AlbumInfo(BaseModel):
     name: str
     asset_count: int
     shared: bool
+
+
+class OnThisDay(BaseModel):
+    """ "On this day" memories: photos taken around today's date in previous years."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    window_days: int = Field(
+        default=3, ge=0, le=31, description="Days before and after today's date to include"
+    )
+    years_back: int = Field(default=10, ge=1, le=20, description="How many past years to search")
+    min_years_ago: int = Field(
+        default=1, ge=1, le=20, description="Skip the most recent years (1 = exclude this year)"
+    )
+
+    @model_validator(mode="after")
+    def _check_years(self) -> OnThisDay:
+        if self.min_years_ago > self.years_back:
+            raise ValueError("min_years_ago must not exceed years_back")
+        return self
 
 
 class ImmichDisplayRequest(BaseModel):
@@ -147,6 +179,17 @@ class ImmichDisplayRequest(BaseModel):
         default=False,
         description="Allow photos shown within anti_repeat_days or taken close to one",
     )
+    taken_after: AwareDatetime | None = Field(
+        default=None, description="Only photos taken at or after this moment (ISO 8601)"
+    )
+    taken_before: AwareDatetime | None = Field(
+        default=None, description="Only photos taken at or before this moment (ISO 8601)"
+    )
+    on_this_day: OnThisDay | None = Field(
+        default=None,
+        description="Memories: photos taken around today's date in previous years "
+        "(evaluated at display time; exclusive with taken_after/taken_before)",
+    )
     skip_quality_gate: bool | None = Field(
         default=None,
         description="Skip the photo suitability check. Default: skipped in album mode "
@@ -158,4 +201,8 @@ class ImmichDisplayRequest(BaseModel):
         self.clip_queries = [query.strip() for query in self.clip_queries if query.strip()]
         if self.mode == "search" and not self.clip_queries:
             raise ValueError("mode 'search' needs at least one clip_queries entry")
+        if self.on_this_day is not None and (self.taken_after or self.taken_before):
+            raise ValueError("on_this_day cannot be combined with taken_after/taken_before")
+        if self.taken_after and self.taken_before and self.taken_after >= self.taken_before:
+            raise ValueError("taken_after must be earlier than taken_before")
         return self
