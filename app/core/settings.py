@@ -176,6 +176,11 @@ class EnvSettings(BaseSettings):
         return self.data_dir / "queue"
 
     @property
+    def last_delivery_path(self) -> Path:
+        """Location of the last successful frame delivery (what the frame shows)."""
+        return self.data_dir / "last_delivery.json"
+
+    @property
     def scheduler_state_path(self) -> Path:
         """Location of the scheduler state (replayable rule, timer, last run)."""
         return self.data_dir / "scheduler_state.json"

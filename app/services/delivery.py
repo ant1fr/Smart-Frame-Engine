@@ -11,6 +11,16 @@
 Only the newest image is kept: submitting a new image replaces any pending one. The
 queue survives restarts. Uploads are serialized, so a wakeup racing with the worker
 never pushes the same image twice.
+
+Ephemeral images (a song cover, a movie poster) may carry ``expires_at``. An expired
+image is never uploaded: it is dropped before any delivery attempt, hidden from queue
+inspection, and the worker wakes up at the expiry time to purge it. The drop handler
+(set by the application, see :class:`app.services.ephemeral.EphemeralService`) then
+restores the previous non-ephemeral image. :meth:`DeliveryService.cancel_ephemeral`
+drops a queued ephemeral image on demand (playback stopped).
+
+The last successful delivery is persisted so the application knows what the frame shows
+after a restart (no needless re-upload to a sleeping frame).
 """
 
 from __future__ import annotations
@@ -19,7 +29,7 @@ import asyncio
 import contextlib
 import hashlib
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -48,6 +58,7 @@ TELEMETRY_INTERVAL_S: Final = 300.0
 WORKER_ERROR_PAUSE_S: Final = 5.0
 
 DeliveryReason = Literal["submit", "force", "wakeup", "worker"]
+DropReason = Literal["expired", "cancelled"]
 Clock = Callable[[], datetime]
 ClientFactory = Callable[[FraimicConfig], FraimicClient]
 
@@ -78,6 +89,19 @@ class PendingUpload(BaseModel):
     last_attempt_at: AwareDatetime | None = None
     last_error: str | None = None
     next_attempt_at: AwareDatetime | None = None
+    ephemeral: bool = Field(
+        default=False, description="Temporary image (now playing, poster): can be cancelled"
+    )
+    expires_at: AwareDatetime | None = Field(
+        default=None, description="Dropped instead of delivered after this time"
+    )
+    content_key: str | None = Field(
+        default=None, description="Identity of the displayed content (deduplication)"
+    )
+
+    def expired(self, now: datetime) -> bool:
+        """Whether the image must no longer be delivered."""
+        return self.expires_at is not None and self.expires_at <= now
 
 
 class LastDelivery(BaseModel):
@@ -100,10 +124,15 @@ class FrameTelemetry(BaseModel):
     info: FrameInfo | None = None
 
 
+DropHandler = Callable[[PendingUpload, DropReason], Awaitable[None]]
+
+
 class DeliveryOutcome(BaseModel):
     """Result of a submit, push or flush."""
 
-    status: Literal["delivered", "queued", "nothing_pending"]
+    status: Literal["delivered", "queued", "nothing_pending", "dropped"] = Field(
+        description="dropped = the queued image had expired and was discarded"
+    )
     reason: DeliveryReason
     sha256: str | None = None
     error: str | None = None
@@ -129,9 +158,21 @@ class DeliveryService:
         *,
         client_factory: ClientFactory = FraimicClient.from_config,
         clock: Clock = _utcnow,
+        last_delivery_path: Path | None = None,
     ) -> None:
+        """Create the service (call :meth:`load` then :meth:`start`).
+
+        Args:
+            queue_dir: Directory of ``pending.bin`` / ``pending.json``.
+            config_store: Runtime configuration (the ``fraimic`` section).
+            client_factory: Builds the frame client (tests inject a fake transport).
+            clock: Returns the current aware time.
+            last_delivery_path: Where the last successful delivery is persisted
+                (``None`` keeps it in memory only).
+        """
         self._bin_path = queue_dir / PENDING_BIN
         self._meta_path = queue_dir / PENDING_META
+        self._last_delivery_path = last_delivery_path
         self._config_store = config_store
         self._client_factory = client_factory
         self._clock = clock
@@ -141,7 +182,9 @@ class DeliveryService:
         self._wake = asyncio.Event()
         self._signalled = False  # an explicit wake-up (vs. a mere reschedule)
         self._task: asyncio.Task[None] | None = None
-        self._background: set[asyncio.Task[DeliveryOutcome]] = set()
+        self._background: set[asyncio.Task[Any]] = set()
+        self._drop_handler: DropHandler | None = None
+        self._inflight: PendingUpload | None = None
 
         self._client: FraimicClient | None = None
         self._client_config: FraimicConfig | None = None
@@ -166,7 +209,12 @@ class DeliveryService:
         else:
             logger.info("Restored pending upload %s from %s", pending.sha256[:12], pending.source)
         self._pending = pending
+        self._last_delivery = self._load_last_delivery()
         return pending
+
+    def set_drop_handler(self, handler: DropHandler | None) -> None:
+        """Coroutine called (in the background) after an expired image was dropped."""
+        self._drop_handler = handler
 
     async def start(self) -> None:
         """Start the background worker and follow configuration changes."""
@@ -191,8 +239,32 @@ class DeliveryService:
     # --- Read access -------------------------------------------------------------------
     @property
     def pending(self) -> PendingUpload | None:
-        """The image waiting for the frame, if any."""
-        return self._pending
+        """The image waiting for the frame, if any (an expired image is never returned).
+
+        Seeing an expired image wakes the worker so it is purged right away.
+        """
+        pending = self._pending
+        if pending is not None and pending.expired(self._clock()):
+            self._signal()
+            return None
+        return pending
+
+    @property
+    def last_delivery(self) -> LastDelivery | None:
+        """The most recent successful upload (persisted across restarts)."""
+        return self._last_delivery
+
+    def frame_content_differs(self, sha256: str) -> bool:
+        """Whether the frame may show something other than the image ``sha256``.
+
+        An upload in progress counts as what the frame shows; an unknown frame state
+        (nothing ever delivered) counts as different.
+        """
+        inflight = self._inflight
+        if inflight is not None:
+            return inflight.sha256 != sha256
+        last = self._last_delivery
+        return last is None or last.sha256 != sha256
 
     @property
     def telemetry(self) -> FrameTelemetry:
@@ -203,7 +275,7 @@ class DeliveryService:
         """Current delivery state (no network access)."""
         return DeliverySnapshot(
             power_mode=self._config.fraimic.power_mode,
-            pending=self._pending,
+            pending=self.pending,
             last_delivery=self._last_delivery,
             telemetry=self._telemetry,
         )
@@ -216,6 +288,9 @@ class DeliveryService:
         source: str | None = None,
         title: str | None = None,
         immediate: bool | None = None,
+        ephemeral: bool = False,
+        expires_at: datetime | None = None,
+        content_key: str | None = None,
     ) -> DeliveryOutcome:
         """Queue ``data`` for the frame, replacing any pending image.
 
@@ -225,6 +300,9 @@ class DeliveryService:
             title: Optional human-readable title.
             immediate: Attempt the upload now. ``None`` follows the power mode
                 (``continuous`` = now, ``deepsleep`` = queue for the worker).
+            ephemeral: Temporary image that :meth:`cancel_ephemeral` may drop.
+            expires_at: Drop the image instead of delivering it after this time.
+            content_key: Identity of the displayed content (deduplication).
 
         Raises:
             ValueError: If ``data`` does not match the configured panel's size.
@@ -240,6 +318,9 @@ class DeliveryService:
             created_at=self._clock(),
             source=source,
             title=title,
+            ephemeral=ephemeral,
+            expires_at=expires_at,
+            content_key=content_key,
         )
         async with self._state_lock:
             await asyncio.to_thread(self._write_pending, data, pending)
@@ -253,18 +334,29 @@ class DeliveryService:
         return DeliveryOutcome(status="queued", reason="submit", sha256=pending.sha256)
 
     async def flush(self, reason: DeliveryReason = "wakeup") -> DeliveryOutcome:
-        """Try to deliver the pending image now (no-op when nothing is pending)."""
+        """Try to deliver the pending image now (no-op when nothing is pending).
+
+        An expired image is dropped instead (status ``dropped``) and the drop handler
+        runs in the background.
+        """
         async with self._upload_lock:
             async with self._state_lock:
+                expired = await self._purge_expired_locked()
                 pending = self._pending
                 data = await asyncio.to_thread(self._read_pending, pending) if pending else None
                 if pending is not None and data is None:
                     await asyncio.to_thread(remove_quietly, self._bin_path, self._meta_path)
                     self._pending = None
+            if expired is not None:
+                self._dispatch_drop(expired, "expired")
+                return DeliveryOutcome(
+                    status="dropped", reason=reason, sha256=expired.sha256, error="Image expired"
+                )
             if pending is None or data is None:
                 return DeliveryOutcome(status="nothing_pending", reason=reason)
 
             client = await self._get_client()
+            self._inflight = pending
             try:
                 await self._probe(client)
                 result = await client.upload_bin(data, expected_size=pending.size)
@@ -273,6 +365,8 @@ class DeliveryService:
                 return DeliveryOutcome(
                     status="queued", reason=reason, sha256=pending.sha256, error=str(exc)
                 )
+            finally:
+                self._inflight = None
 
             now = self._clock()
             self._telemetry = self._telemetry.model_copy(
@@ -285,6 +379,7 @@ class DeliveryService:
                 bytes=result.bytes_sent,
                 reason=reason,
             )
+            await self._save_last_delivery()
             async with self._state_lock:
                 if self._pending is not None and self._pending.sha256 == pending.sha256:
                     await asyncio.to_thread(remove_quietly, self._bin_path, self._meta_path)
@@ -334,6 +429,42 @@ class DeliveryService:
         )
         return info
 
+    async def cancel_ephemeral(self) -> PendingUpload | None:
+        """Drop the pending image if it is ephemeral (e.g. playback stopped).
+
+        The drop handler is **not** called: the caller decides what to show instead.
+
+        Returns:
+            The dropped image, or ``None`` when nothing ephemeral was waiting.
+        """
+        async with self._state_lock:
+            pending = self._pending
+            if pending is None or not pending.ephemeral:
+                return None
+            await asyncio.to_thread(remove_quietly, self._bin_path, self._meta_path)
+            self._pending = None
+        logger.info("Cancelled queued ephemeral image %s", pending.sha256[:12])
+        self._reschedule()
+        return pending
+
+    async def extend_pending(self, content_key: str, expires_at: datetime | None) -> bool:
+        """Move the expiry of the pending image if it shows ``content_key``.
+
+        Returns:
+            Whether a matching pending image was updated.
+        """
+        async with self._state_lock:
+            pending = self._pending
+            if pending is None or pending.content_key != content_key:
+                return False
+            updated = pending.model_copy(update={"expires_at": expires_at})
+            self._pending = updated
+            await asyncio.to_thread(
+                atomic_write_json, self._meta_path, updated.model_dump(mode="json")
+            )
+        self._reschedule()
+        return True
+
     def wake(self) -> None:
         """Wake the worker so it re-evaluates immediately."""
         self._signal()
@@ -349,15 +480,23 @@ class DeliveryService:
 
     # --- Worker ---------------------------------------------------------------------------
     def next_wait(self) -> float | None:
-        """Seconds the worker sleeps before its next check (``None`` = until woken)."""
+        """Seconds the worker sleeps before its next check (``None`` = until woken).
+
+        A pending image with ``expires_at`` bounds the wait so it is purged on time.
+        """
         config = self._config.fraimic
         pending = self._pending
         if pending is not None:
+            now = self._clock()
             if config.power_mode == "deepsleep":
-                return float(config.poll_interval_s)
-            if pending.next_attempt_at is None:
-                return 0.0
-            return max(0.0, (pending.next_attempt_at - self._clock()).total_seconds())
+                wait = float(config.poll_interval_s)
+            elif pending.next_attempt_at is None:
+                wait = 0.0
+            else:
+                wait = max(0.0, (pending.next_attempt_at - now).total_seconds())
+            if pending.expires_at is not None:
+                wait = min(wait, max(0.0, (pending.expires_at - now).total_seconds()))
+            return wait
         if config.power_mode == "continuous" and config.base_url:
             return TELEMETRY_INTERVAL_S
         return None
@@ -386,6 +525,11 @@ class DeliveryService:
                 await asyncio.sleep(WORKER_ERROR_PAUSE_S)
 
     async def _tick(self, woken: bool) -> None:
+        async with self._state_lock:
+            expired = await self._purge_expired_locked()
+        if expired is not None:
+            self._dispatch_drop(expired, "expired")
+            return
         config = self._config.fraimic
         pending = self._pending
         if pending is not None:
@@ -468,10 +612,61 @@ class DeliveryService:
             await self.refresh_info()
         return DeliveryOutcome(status="nothing_pending", reason="wakeup")
 
-    def _spawn(self, coro: Coroutine[Any, Any, DeliveryOutcome]) -> None:
+    def _spawn(self, coro: Coroutine[Any, Any, Any]) -> None:
         task = asyncio.create_task(coro)
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+
+    async def _purge_expired_locked(self) -> PendingUpload | None:
+        """Drop the pending image if it expired (caller holds ``_state_lock``)."""
+        pending = self._pending
+        if pending is None or not pending.expired(self._clock()):
+            return None
+        await asyncio.to_thread(remove_quietly, self._bin_path, self._meta_path)
+        self._pending = None
+        logger.info(
+            "Dropped expired image %s (%s) instead of delivering it",
+            pending.sha256[:12],
+            pending.title or pending.source or "untitled",
+        )
+        return pending
+
+    def _dispatch_drop(self, pending: PendingUpload, reason: DropReason) -> None:
+        handler = self._drop_handler
+        if handler is not None:
+            self._spawn(self._run_drop_handler(handler, pending, reason))
+
+    @staticmethod
+    async def _run_drop_handler(
+        handler: DropHandler, pending: PendingUpload, reason: DropReason
+    ) -> None:
+        try:
+            await handler(pending, reason)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Handling the dropped image %s failed", pending.sha256[:12])
+
+    def _load_last_delivery(self) -> LastDelivery | None:
+        if self._last_delivery_path is None:
+            return None
+        raw = read_json(self._last_delivery_path, lambda: None)
+        if raw is None:
+            return None
+        try:
+            return LastDelivery.model_validate(raw)
+        except ValidationError:
+            logger.warning("Ignoring invalid %s", self._last_delivery_path)
+            return None
+
+    async def _save_last_delivery(self) -> None:
+        path, last = self._last_delivery_path, self._last_delivery
+        if path is None or last is None:
+            return
+        try:
+            await asyncio.to_thread(atomic_write_json, path, last.model_dump(mode="json"))
+        except OSError:
+            logger.exception("Could not persist the last delivery to %s", path)
 
     async def _on_config_change(self, config: RuntimeConfig) -> None:
         pending = self._pending

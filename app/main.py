@@ -93,7 +93,9 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
 
         current_store = CurrentImageStore(settings.cache_dir)
         current_store.load()
-        delivery = DeliveryService(settings.queue_dir, config_store)
+        delivery = DeliveryService(
+            settings.queue_dir, config_store, last_delivery_path=settings.last_delivery_path
+        )
         delivery.load()
         display = DisplayService(config_store, current_store, delivery, history_store)
         url_policy = URLPolicy.from_entries(

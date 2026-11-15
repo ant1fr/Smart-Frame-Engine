@@ -30,7 +30,7 @@ class WakeupAccepted(BaseModel):
 
 
 def _outcome_response(outcome: DeliveryOutcome) -> JSONResponse:
-    status_code = 200 if outcome.status in {"delivered", "nothing_pending"} else 202
+    status_code = 200 if outcome.status in {"delivered", "nothing_pending", "dropped"} else 202
     return JSONResponse(outcome.model_dump(mode="json"), status_code=status_code)
 
 
