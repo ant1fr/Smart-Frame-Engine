@@ -14,7 +14,7 @@ from app.clients.http_images import USER_AGENT, ImageFetcher
 from app.core.config_store import ConfigStore
 from app.core.security import URLPolicy
 from app.providers.music import ArtworkResolver, MinIntervalLimiter
-from app.providers.music.artwork import lucene_quote
+from app.providers.music.artwork import artist_match_level, lucene_quote, title_match_level
 
 DEEZER = "https://api.deezer.com"
 MB = "https://musicbrainz.org/ws/2"
@@ -297,3 +297,159 @@ async def test_rate_limiter_spaces_out_calls() -> None:
 def test_lucene_quote_escapes_special_characters() -> None:
     assert lucene_quote('AC/DC "Live"') == '"AC\\/DC \\"Live\\""'
     assert lucene_quote("Sigur Rós") == '"Sigur Rós"'
+
+
+@respx.mock
+async def test_track_search_finds_the_real_album_hidden_by_lookalikes(setup: Setup) -> None:
+    """Real case: the album search returns only covers and a remix EP of "Back to Black"."""
+    respx.get(f"{DEEZER}/search/album").respond(
+        json={
+            "data": [
+                deezer_album("Back To Black", "Demi Chang", "https://cdn.test/cover.jpg"),
+                {
+                    **deezer_album(
+                        "Back To Black - The Singles Remixes",
+                        "Amy Winehouse",
+                        "https://cdn.test/remixes.jpg",
+                    ),
+                    "record_type": "ep",
+                },
+            ]
+        }
+    )
+    respx.get(f"{DEEZER}/search").respond(
+        json={
+            "data": [
+                {
+                    "title": "Rehab",
+                    "artist": {"name": "Amy Winehouse"},
+                    "album": {"title": "Back To Black", "cover_xl": "https://cdn.test/btb.jpg"},
+                }
+            ]
+        }
+    )
+    mb = respx.get(f"{MB}/release-group/")
+    match = await setup.resolver.lookup(
+        title="Rehab", artist="Amy Winehouse", album="Back to Black"
+    )
+    assert match is not None and match.url == "https://cdn.test/btb.jpg"
+    assert not mb.called
+
+
+@respx.mock
+async def test_musicbrainz_exact_match_beats_an_approximate_deezer_result(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(
+        json={"data": [deezer_album("Homework (Remixes)", "Daft Punk", "https://cdn.test/rmx.jpg")]}
+    )
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    respx.get(f"{MB}/release-group/").respond(
+        json={
+            "release-groups": [
+                {
+                    "id": "hw",
+                    "score": 100,
+                    "title": "Homework",
+                    "artist-credit": [{"name": "Daft Punk"}],
+                }
+            ]
+        }
+    )
+    match = await setup.resolver.lookup(title="Da Funk", artist="Daft Punk", album="Homework")
+    assert match is not None and match.source == "musicbrainz"
+
+
+@respx.mock
+async def test_approximate_deezer_result_is_the_last_resort(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(
+        json={"data": [deezer_album("Homework (Remixes)", "Daft Punk", "https://cdn.test/rmx.jpg")]}
+    )
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    respx.get(f"{MB}/release-group/").respond(json={"release-groups": []})
+    match = await setup.resolver.lookup(title="Da Funk", artist="Daft Punk", album="Homework")
+    assert match is not None and match.url == "https://cdn.test/rmx.jpg"
+
+
+@respx.mock
+async def test_throttled_musicbrainz_requests_are_retried(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(json={"data": []})
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    mb = respx.get(f"{MB}/release-group/").mock(
+        side_effect=[
+            httpx.Response(503),
+            httpx.Response(
+                200,
+                json={
+                    "release-groups": [
+                        {"id": "hw", "score": 100, "artist-credit": [{"name": "Daft Punk"}]}
+                    ]
+                },
+            ),
+        ]
+    )
+    match = await setup.resolver.lookup(title="Da Funk", artist="Daft Punk", album="Homework")
+    assert match is not None and match.source == "musicbrainz"
+    assert mb.call_count == 2
+    assert 2.0 in setup.limiter.sleeps  # backed off before retrying
+
+
+@respx.mock
+async def test_musicbrainz_gives_up_after_the_retries(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(json={"data": []})
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    mb = respx.get(f"{MB}/release-group/").respond(503)
+    assert await setup.resolver.lookup(title="x", artist="A", album="B") is None
+    assert mb.call_count == 3
+
+
+@pytest.mark.parametrize(
+    ("candidate", "level"),
+    [
+        ("Abbey Road", 0),
+        ("ABBEY ROAD", 0),
+        ("Abbey Road (Remastered 2009)", 1),
+        ("Abbey Road (2019 Mix)", 1),
+        ("Abbey Road (Super Deluxe Edition)", 1),
+        ("Abbey Road [Anniversary Edition] (Remastered)", 1),
+        ("Abbey Road (Live)", 2),
+        ("Abbey Road (Remixes)", 2),
+        ("Abbey Road - The Singles Remixes", 2),
+        ("Abbey Road (Tribute Edition)", 2),
+        ("Let It Be", 2),
+    ],
+)
+def test_title_match_level(candidate: str, level: int) -> None:
+    assert title_match_level("Abbey Road", candidate) == level
+
+
+def test_artist_match_level() -> None:
+    assert artist_match_level("The Beatles", "the beatles") == 0
+    assert artist_match_level("The Beatles", "The Beatles Complete On Ukulele") == 1
+    assert artist_match_level("Queen", "Queen + David Bowie") == 1
+    assert artist_match_level("Queen", "Madonna") is None
+    assert artist_match_level("Queen", None) is None
+
+
+@respx.mock
+async def test_the_real_artist_beats_a_tribute_with_the_exact_title(setup: Setup) -> None:
+    """Real case: "Abbey Road" by a ukulele tribute vs "Abbey Road (2019 Mix)" by The Beatles."""
+    respx.get(f"{DEEZER}/search/album").respond(
+        json={
+            "data": [
+                {
+                    **deezer_album(
+                        "Abbey Road (2019 Mix)", "The Beatles", "https://cdn.test/mix.jpg"
+                    ),
+                    "record_type": "album",
+                },
+                deezer_album(
+                    "Abbey Road", "The Beatles Complete On Ukulele", "https://cdn.test/uke.jpg"
+                ),
+            ]
+        }
+    )
+    mb = respx.get(f"{MB}/release-group/")
+    match = await setup.resolver.lookup(
+        title="Come Together", artist="The Beatles", album="Abbey Road"
+    )
+    assert match is not None and match.url == "https://cdn.test/mix.jpg"
+    assert not mb.called  # an edition of the right album by the right artist is a sure match

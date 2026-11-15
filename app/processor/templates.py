@@ -51,6 +51,9 @@ SHADOW_OPACITY: Final = 150
 VINYL_PEEK: Final = 0.32
 VINYL_BLACK: Final[RGB] = (12, 12, 12)
 VINYL_GROOVE: Final[RGB] = (58, 58, 58)
+#: Light rim and sheen so the record stays visible on dark (black) backgrounds.
+VINYL_RIM: Final[RGB] = (150, 150, 150)
+VINYL_SHEEN: Final[RGB] = (95, 95, 95)
 #: Background colors are pulled this much toward the nearest panel color (cleaner dither).
 PALETTE_PULL: Final = 0.35
 TITLE_CARD_BACKGROUND: Final[RGB] = (0, 0, 0)
@@ -208,6 +211,17 @@ def _vinyl_disc(diameter: int, label: RGB) -> Image.Image:
     disc = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     draw = ImageDraw.Draw(disc)
     draw.ellipse((0, 0, big - 1, big - 1), fill=(*VINYL_BLACK, 255))
+    rim = max(2, round(big * 0.006))
+    draw.ellipse((0, 0, big - 1, big - 1), outline=(*VINYL_RIM, 255), width=rim)
+    # A soft highlight arc on the grooves, like light catching the vinyl.
+    sheen = round(big * 0.08)
+    draw.arc(
+        (sheen, sheen, big - 1 - sheen, big - 1 - sheen),
+        start=-60,
+        end=10,
+        fill=(*VINYL_SHEEN, 255),
+        width=max(2, round(big * 0.012)),
+    )
     radius = big / 2
     groove_width = max(1, round(big * 0.002))
     fraction = 0.92
