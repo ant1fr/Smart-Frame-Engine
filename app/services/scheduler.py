@@ -181,6 +181,24 @@ class ActiveRuleView(BaseModel):
     )
 
 
+class ContextView(BaseModel):
+    """The temporary Smart Mix boost, as exposed by the API."""
+
+    label: str | None
+    kind: str
+    weight: float
+    exclusive: bool
+    expires_at: AwareDatetime
+
+
+class SmartMixStatus(BaseModel):
+    """Smart Mix summary for ``GET /api/status``."""
+
+    enabled: bool
+    entries: int = Field(description="Enabled playlist entries")
+    context: ContextView | None = Field(description="Live temporary boost, if any")
+
+
 class SchedulerSnapshot(BaseModel):
     """Scheduler state exposed through ``GET /api/status`` (no network access)."""
 
@@ -199,6 +217,7 @@ class SchedulerSnapshot(BaseModel):
     hold_until: AwareDatetime | None = Field(
         description="A directly pushed image is protected from scheduled refreshes until then"
     )
+    smart_mix: SmartMixStatus
     active_rule: ActiveRuleView | None = Field(description="null until something can be replayed")
 
 
@@ -304,6 +323,10 @@ class SchedulerService:
         """Whether a refresh is in progress."""
         return self._lock.locked()
 
+    def now(self) -> datetime:
+        """The current time of the service clock."""
+        return self._clock()
+
     @property
     def supported_kinds(self) -> list[str]:
         """Source kinds that can be replayed (the runner registry)."""
@@ -312,6 +335,23 @@ class SchedulerService:
     def _live_hold(self) -> datetime | None:
         hold = self._state.hold_until
         return hold if hold is not None and hold > self._clock() else None
+
+    def context_view(self) -> ContextView | None:
+        """API view of the live context boost."""
+        context = self.live_context()
+        if context is None:
+            return None
+        return ContextView(
+            label=context.label,
+            kind=context.rule.kind,
+            weight=context.weight,
+            exclusive=context.exclusive,
+            expires_at=context.expires_at,
+        )
+
+    def mix_pool(self) -> list[MixCandidate]:
+        """Candidates currently in the Smart Mix (enabled entries plus the live context)."""
+        return self._resolver.pool(self._config.smart_mix, self.live_context())
 
     def live_context(self) -> MixContext | None:
         """The Smart Mix context boost, unless it has expired."""
@@ -356,6 +396,11 @@ class SchedulerService:
             last_display_at=self._state.last_display_at,
             consecutive_failures=self._state.consecutive_failures,
             hold_until=self._live_hold(),
+            smart_mix=SmartMixStatus(
+                enabled=self._config.smart_mix.enabled,
+                entries=sum(1 for e in self._config.smart_mix.entries if e.enabled),
+                context=self.context_view(),
+            ),
             active_rule=(
                 ActiveRuleView(kind=active.kind, source=active.source) if active else None
             ),
@@ -552,11 +597,11 @@ class SchedulerService:
         raise failure
 
     async def _attempt(self, candidate: MixCandidate) -> tuple[DisplayResult, MixCandidate]:
-        rule = candidate.rule.model_copy(update={"params": self._expand(candidate.rule.params)})
+        rule = candidate.rule.model_copy(update={"params": self.expand(candidate.rule.params)})
         runner = self._runner(rule)
         return await runner(rule), candidate
 
-    def _expand(self, params: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    def expand(self, params: dict[str, JsonValue]) -> dict[str, JsonValue]:
         """Resolve ``{season}``-style placeholders against the current time."""
         context = RuleContext(
             self._clock(),
@@ -677,7 +722,7 @@ class SchedulerService:
 
 
 # --- Runners --------------------------------------------------------------------------
-def _validation_summary(exc: ValidationError) -> str:
+def validation_summary(exc: ValidationError) -> str:
     """Field errors without echoing input values."""
     return "; ".join(
         f"{'.'.join(str(part) for part in err['loc']) or 'params'}: {err['msg']}"
@@ -701,7 +746,7 @@ def immich_runner(provider: ImmichProvider, display: DisplayService) -> RuleRunn
         try:
             request = ImmichDisplayRequest.model_validate(params)
         except ValidationError as exc:
-            raise InvalidRuleError(f"Invalid immich rule: {_validation_summary(exc)}") from None
+            raise InvalidRuleError(f"Invalid immich rule: {validation_summary(exc)}") from None
         asset = await provider.fetch(request)
         return await display.display_asset(asset, fit=request.fit, push=True)
 
