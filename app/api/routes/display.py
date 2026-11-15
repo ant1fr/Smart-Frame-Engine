@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Security, UploadFile
 
-from app.api.deps import DisplayServiceDep, SettingsDep
+from app.api.deps import DisplayServiceDep, SchedulerDep, SettingsDep
 from app.core.auth import api_key_scheme
 from app.core.config_models import FitMode
 from app.core.security import InvalidImageError, PayloadTooLargeError, read_upload
@@ -44,6 +44,7 @@ _UPLOAD_RESPONSES: dict[int | str, dict[str, Any]] = {
 async def display_upload(
     settings: SettingsDep,
     display: DisplayServiceDep,
+    scheduler: SchedulerDep,
     file: Annotated[UploadFile, File(description="Image file (max MAX_UPLOAD_MB)")],
     fit: Annotated[FitMode | None, Form(description="Override the default fit mode")] = None,
     push_to_fraimic: Annotated[
@@ -53,7 +54,8 @@ async def display_upload(
     """Render an uploaded image for the frame and make it the current image.
 
     In ``continuous`` mode the response includes the delivery outcome; in ``deepsleep``
-    mode the image is queued until the frame wakes up.
+    mode the image is queued until the frame wakes up. A pushed upload restarts the
+    refresh timer but keeps the rule replayed by ``POST /api/refresh``.
     """
     try:
         data = await read_upload(file, settings.max_upload_bytes)
@@ -64,7 +66,7 @@ async def display_upload(
 
     title = _clean_filename(file.filename)
     try:
-        return await display.display_bytes(
+        result = await display.display_bytes(
             data,
             source="upload",
             title=title,
@@ -74,3 +76,6 @@ async def display_upload(
         )
     except InvalidImageError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
+    if push_to_fraimic:
+        await scheduler.record_manual(None)
+    return result

@@ -5,9 +5,9 @@ TMDB movie/TV posters, direct URLs), optimizes them for a color eInk panel (Spec
 and pushes them to a [Fraimic](https://fraimic.com) picture frame. Home Assistant
 friendly, runs standalone in Docker.
 
-> **Status:** early development (`v0.x`). The core service, the eInk pipeline and frame
-> delivery (continuous and deep-sleep) are in place; image providers and the web UI are
-> being added milestone by milestone.
+> **Status:** early development (`v0.x`). The core service, the eInk pipeline, frame
+> delivery (continuous and deep-sleep), the Immich provider and the autonomous scheduler
+> are in place; more providers and the web UI are being added milestone by milestone.
 
 ## Quickstart
 
@@ -165,7 +165,55 @@ The frame is driven through its local REST API (`GET /api/info`, `POST /api/imag
 | `POST /api/fraimic/push` | Force push the current image now (200 delivered, 202 queued) |
 | `POST /api/fraimic/wakeup` | Frame is awake: flush the queue (202, or `?wait=true` for the outcome) |
 | `GET /api/fraimic/info` | Last known battery / Wi-Fi / firmware (`?refresh=true` queries the frame) |
-| `GET /api/status` | Frame telemetry, queue state and current image metadata |
+| `GET /api/status` | Frame telemetry, queue state, current image metadata and scheduler state |
+
+## Scheduler
+
+The frame can update itself without Home Assistant. The scheduler replays the **active
+rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default 6, minimum
+0.25) once `scheduler.enabled` is on (`SCHEDULER_ENABLED=true`):
+
+- **Active rule.** The last request made through `POST /api/display/immich` (pushed to the
+  frame; previews with `push_to_fraimic=false` do not count), so showing "Alice and Bob
+  at the beach" once keeps rotating through those photos with the anti-repeat history.
+  Pin a fixed rule in `scheduler.source_rule` to override it:
+
+  ```bash
+  curl -X PUT http://localhost:8000/api/config -H 'Content-Type: application/json'     -d '{"scheduler": {"enabled": true, "source_rule":
+         {"kind": "immich", "params": {"mode": "favorites", "persons": ["Alice"]}}}}'
+  ```
+
+  `params` takes the fields of `POST /api/display/immich` (except `push_to_fraimic` and
+  `ignore_history`). Only Immich rules can be replayed for now. The last rule is kept in
+  `./data/scheduler_state.json`, so displaying a photo never rewrites your settings.
+- **Timer.** Any display (a manual photo, an upload, a refresh) restarts the interval, so
+  a picture chosen by hand stays up for a full interval. A refresh that became due while
+  the app was down runs about 30 s after startup.
+- **Quiet hours.** `QUIET_HOURS_START` / `QUIET_HOURS_END` (24h `HH:MM`, may cross
+  midnight, e.g. `22:00` -> `07:00`) in the timezone `TZ` (IANA, e.g. `Europe/Paris`; the
+  container otherwise runs in UTC). A refresh due inside the window runs when it ends;
+  daylight saving changes are handled.
+- **Failures.** If Immich is down or nothing matches, the refresh is retried after
+  `scheduler.retry_minutes` (default 15), doubling each time, capped by the interval.
+- **Sleeping frames.** With `scheduler.skip_if_pending` (default on), a scheduled refresh
+  is skipped while the previous image still waits in the deep-sleep queue, so an image the
+  frame never showed is not replaced.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/refresh` | Replay the active rule now and push the result (ignores quiet hours; 409 when there is nothing to replay or a refresh is running) |
+| `GET /api/status` | `scheduler`: `next_run_at`, `in_quiet_hours`, `last_run` (`ok`/`failed`/`skipped` and why), `consecutive_failures`, `active_rule` (`pinned` or `last`) |
+
+```yaml
+# Home Assistant: a "next photo" button
+rest_command:
+  frame_next_photo:
+    url: http://smart-frame.lan:8000/api/refresh
+    method: POST
+    timeout: 60   # selecting, downloading and dithering a photo takes a few seconds
+    headers:
+      X-API-Key: !secret smart_frame_api_key   # only when APP_API_KEY is set
+```
 
 ## Development
 

@@ -73,6 +73,11 @@ def setup_logging(level: str = "INFO") -> None:
         stream_handler.setFormatter(logging.Formatter(LOG_FORMAT))
         root.addHandler(stream_handler)
 
+    # APScheduler logs every job execution at INFO; the scheduler service logs its own.
+    logging.getLogger("apscheduler").setLevel(
+        logging.DEBUG if root.level <= logging.DEBUG else logging.WARNING
+    )
+
     handlers: list[logging.Handler] = list(root.handlers)
     for name in _UVICORN_LOGGERS:
         handlers.extend(logging.getLogger(name).handlers)

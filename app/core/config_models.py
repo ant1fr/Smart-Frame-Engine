@@ -388,7 +388,11 @@ class QualityConfig(_Section):
 
 
 class SourceRule(BaseModel):
-    """The last source request, replayed by ``/api/refresh`` and the scheduler."""
+    """A replayable source request (``/api/refresh`` and the scheduler).
+
+    ``params`` holds the request body of the matching display endpoint, e.g. for
+    ``immich`` the fields of ``POST /api/display/immich`` (``persons``, ``album_name``...).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -409,9 +413,25 @@ class SchedulerConfig(_Section):
     quiet_hours_end: str | None = Field(
         default=None, description="HH:MM end of the no-refresh window (local time)"
     )
-    timezone: str = Field(default="UTC", description="IANA timezone, e.g. Europe/Paris")
+    timezone: str = Field(
+        default="UTC", description="IANA timezone of the quiet hours, e.g. Europe/Paris"
+    )
     source_rule: SourceRule | None = Field(
-        default=None, description="Source rule replayed on refresh (set by display actions)"
+        default=None,
+        description="Pinned rule replayed on refresh (optional). When empty, the last manual "
+        "display request is replayed",
+    )
+    skip_if_pending: bool = Field(
+        default=True,
+        description="Skip a scheduled refresh while the previous image still waits for the "
+        "frame (deepsleep), so an image the frame never showed is not replaced",
+    )
+    retry_minutes: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        description="First retry delay after a failed refresh; doubles on each failure, "
+        "capped by interval_hours",
     )
 
     @field_validator("quiet_hours_start", "quiet_hours_end")
@@ -438,6 +458,8 @@ class SchedulerConfig(_Section):
     def _quiet_hours_pair(self) -> SchedulerConfig:
         if (self.quiet_hours_start is None) != (self.quiet_hours_end is None):
             raise ValueError("quiet_hours_start and quiet_hours_end must be set together")
+        if self.quiet_hours_start is not None and self.quiet_hours_start == self.quiet_hours_end:
+            raise ValueError("quiet_hours_start and quiet_hours_end must differ")
         return self
 
 

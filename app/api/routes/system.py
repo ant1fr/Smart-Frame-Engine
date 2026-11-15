@@ -13,10 +13,12 @@ from app.api.deps import (
     ConfigStoreDep,
     CurrentImageStoreDep,
     DeliveryServiceDep,
+    SchedulerDep,
     SettingsDep,
 )
 from app.services.current_image import CurrentImageMeta
 from app.services.delivery import FrameTelemetry, LastDelivery, PendingUpload
+from app.services.scheduler import SchedulerSnapshot
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -48,14 +50,6 @@ class DeliveryStatus(BaseModel):
     last_delivery: LastDelivery | None = None
 
 
-class SchedulerStatus(BaseModel):
-    """Configured autonomous refresh."""
-
-    enabled: bool
-    interval_hours: float
-    timezone: str
-
-
 class ServiceConfigured(BaseModel):
     """Whether each external service has the settings it needs."""
 
@@ -75,7 +69,7 @@ class StatusResponse(BaseModel):
     current_image: CurrentImageMeta | None = Field(
         default=None, description="Metadata of the current image (null before the first one)"
     )
-    scheduler: SchedulerStatus
+    scheduler: SchedulerSnapshot = Field(description="Autonomous refresh: timer and last run")
     services: ServiceConfigured
 
 
@@ -92,6 +86,7 @@ async def status(
     store: ConfigStoreDep,
     current: CurrentImageStoreDep,
     delivery: DeliveryServiceDep,
+    scheduler: SchedulerDep,
 ) -> StatusResponse:
     """Overall system status, queue state and current image (no secrets, no network)."""
     config = store.config
@@ -117,11 +112,7 @@ async def status(
             last_delivery=snapshot.last_delivery,
         ),
         current_image=current.meta,
-        scheduler=SchedulerStatus(
-            enabled=config.scheduler.enabled,
-            interval_hours=config.scheduler.interval_hours,
-            timezone=config.scheduler.timezone,
-        ),
+        scheduler=scheduler.snapshot(),
         services=ServiceConfigured(
             immich=bool(config.immich.accounts),
             tmdb=bool(config.tmdb.api_key.get_secret_value()),

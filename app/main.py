@@ -24,6 +24,7 @@ from app.api.routes import display as display_routes
 from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
 from app.api.routes import immich as immich_routes
+from app.api.routes import refresh as refresh_routes
 from app.api.routes import system as system_routes
 from app.core.auth import APIKeyMiddleware
 from app.core.config_models import RuntimeConfig
@@ -38,6 +39,7 @@ from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
+from app.services.scheduler import SchedulerService, immich_runner
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +107,13 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             history_store,
             max_bytes=settings.max_upload_bytes,
         )
+        scheduler = SchedulerService(
+            settings.scheduler_state_path,
+            config_store,
+            {"immich": immich_runner(immich, display)},
+            has_pending=lambda: delivery.pending is not None,
+        )
+        scheduler.load()
 
         app.state.config_store = config_store
         app.state.history_store = history_store
@@ -113,12 +122,14 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         app.state.display_service = display
         app.state.people_directory = people
         app.state.immich_provider = immich
+        app.state.scheduler_service = scheduler
 
         await delivery.start()
+        await scheduler.start()
         config = config_store.config
         logger.info(
             "Smart Frame Engine %s started (data_dir=%s, auth=%s, root_path=%r, panel=%s, "
-            "power_mode=%s, pending=%s)",
+            "power_mode=%s, pending=%s, scheduler=%s)",
             __version__,
             settings.data_dir,
             "enabled" if settings.auth_enabled else "disabled",
@@ -126,10 +137,12 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             config.fraimic.panel,
             config.fraimic.power_mode,
             delivery.pending is not None,
+            scheduler.next_run_at.isoformat() if scheduler.next_run_at else "off",
         )
         try:
             yield
         finally:
+            await scheduler.stop()
             await delivery.stop()
             logger.info("Smart Frame Engine stopped")
 
@@ -180,6 +193,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(display_routes.router)
     app.include_router(immich_routes.display_router)
     app.include_router(immich_routes.router)
+    app.include_router(refresh_routes.router)
     app.include_router(fraimic_routes.router)
 
     @app.get("/", include_in_schema=False)
