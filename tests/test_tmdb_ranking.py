@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.text import fold
 from app.providers.tmdb.models import SearchResult, TmdbImage, TmdbRequest
-from app.providers.tmdb.ranking import fold, parse_language, pick_result, poster_tier, rank_posters
+from app.providers.tmdb.ranking import parse_language, pick_result, poster_tier, rank_posters
 
 
 def poster(

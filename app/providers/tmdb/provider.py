@@ -26,6 +26,7 @@ from pydantic import JsonValue
 from app.clients.http_images import ImageFetcher, ImageFetchError, decode_base64_image
 from app.core.config_store import ConfigStore
 from app.core.security import InvalidImageError, PayloadTooLargeError, verify_image_bytes
+from app.core.text import fold
 from app.processor.templates import PosterLayout, TitleCardLayout
 from app.providers.base import (
     BaseImageProvider,
@@ -37,7 +38,7 @@ from app.providers.base import (
 )
 from app.providers.tmdb.client import TmdbClient, image_url
 from app.providers.tmdb.models import SearchResult, TmdbImage, TmdbRequest
-from app.providers.tmdb.ranking import fold, parse_language, pick_result, rank_posters
+from app.providers.tmdb.ranking import parse_language, pick_result, rank_posters
 
 logger = logging.getLogger(__name__)
 

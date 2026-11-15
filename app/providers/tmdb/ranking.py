@@ -15,17 +15,15 @@ Within a tier, the best rated poster wins: ``(vote_average, vote_count)`` descen
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from collections.abc import Sequence
 from typing import Final
 
+from app.core.text import fold
 from app.providers.tmdb.models import SearchResult, TmdbImage
 
 FALLBACK_LANGUAGE: Final = "en"
 #: Search results considered when looking for an exact title match.
 EXACT_MATCH_WINDOW: Final = 5
-_NON_WORD: Final = re.compile(r"[^\w]+")
 
 
 def parse_language(language: str) -> tuple[str, str | None]:
@@ -57,13 +55,6 @@ def rank_posters(images: Sequence[TmdbImage], lang: str, region: str | None) -> 
             -image.vote_count,
         ),
     )
-
-
-def fold(text: str) -> str:
-    """Accent-, case- and punctuation-insensitive form of a title."""
-    decomposed = unicodedata.normalize("NFKD", text)
-    stripped = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return " ".join(_NON_WORD.sub(" ", stripped.casefold()).split())
 
 
 def pick_result(
