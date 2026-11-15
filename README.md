@@ -6,8 +6,9 @@ and pushes them to a [Fraimic](https://fraimic.com) picture frame. Home Assistan
 friendly, runs standalone in Docker.
 
 > **Status:** early development (`v0.x`). The core service, the eInk pipeline, frame
-> delivery (continuous and deep-sleep), the Immich provider and the autonomous scheduler
-> are in place; more providers and the web UI are being added milestone by milestone.
+> delivery (continuous and deep-sleep), the Immich provider, TMDB posters, now-playing
+> album covers, ephemeral images and the autonomous scheduler are in place; the web UI is
+> being added milestone by milestone.
 
 ## Quickstart
 
@@ -54,7 +55,33 @@ Generated files (`./data/cache/`):
 | `current.jpg` | `GET /api/current.jpg` | Enhanced composition, before dithering (HA Generic Camera) |
 | `current_dithered.png` | `GET /api/current_dithered.png` | Exact 6-color preview of the panel |
 | `current.bin` | `GET /api/current.bin` | Frame buffer sent to the frame (960,000 / 2,304,000 bytes) |
+| `preview.jpg`, `preview_dithered.png` | `GET /api/preview.jpg`, `GET /api/preview_dithered.png` | The latest render, including `push_to_fraimic=false` ones |
+| `base.*` | - | The last pushed non-ephemeral image, restored after an [ephemeral image](#ephemeral-images-and-the-queue) |
 
+`current.*` always matches what the frame shows (or will show once a sleeping frame wakes
+up). A render with `push_to_fraimic=false` only updates `preview.*`, so a template can be
+inspected without touching the frame or Home Assistant's camera;
+`POST /api/fraimic/push?from_preview=true` then sends it. (Before this release,
+`push_to_fraimic=false` replaced `current.*`.)
+
+### Composition templates
+
+Posters and album covers are never cropped. Instead of a fit mode they use a template that
+lays the artwork out for the frame (portrait or landscape, 13.3" or 31.5"), always with the
+`official` eInk profile:
+
+- **`poster`** - the full poster centered over a blurred, darkened backdrop made from the
+  poster itself, with a thin light border and a soft shadow.
+- **`album`** - the full square cover (non-square art is padded, not cropped) with the title,
+  artist and album underneath (portrait) or beside it (landscape), on a flat background
+  color sampled from the cover. `style: "vinyl"` slides a record out of the sleeve.
+- **`title_card`** - a clean typographic card, used when no artwork can be found.
+
+Text uses the bundled [Inter](https://rsms.me/inter/) font (never Pillow's bitmap
+default), wraps and shrinks to fit, ends with an ellipsis when it really is too long, and is
+drawn in pure black or white, whichever contrasts more with the background. It is rendered
+without anti-aliasing, so glyphs stay a single panel color after dithering instead of
+picking up colored fringes.
 ## Immich
 
 Photos come from one or several [Immich](https://immich.app) accounts. Pinned against
@@ -164,8 +191,8 @@ The frame is driven through its local REST API (`GET /api/info`, `POST /api/imag
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/display/upload` | Upload an image (multipart `file`, optional `fit`, `push_to_fraimic`) |
-| `POST /api/fraimic/push` | Force push the current image now (200 delivered, 202 queued) |
+| `POST /api/display/upload` | Upload an image (multipart `file`, optional `fit`, `push_to_fraimic`, `ephemeral`, `hold_minutes`) |
+| `POST /api/fraimic/push` | Force push the current image now (200 delivered, 202 queued); `?from_preview=true` sends the latest preview |
 | `POST /api/fraimic/wakeup` | Frame is awake: flush the queue (202, or `?wait=true` for the outcome) |
 | `GET /api/fraimic/info` | Last known battery / Wi-Fi / firmware (`?refresh=true` queries the frame) |
 | `GET /api/status` | Frame telemetry, queue state, current image metadata and scheduler state |
@@ -189,8 +216,9 @@ rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default
   ```
 
   `params` takes the fields of `POST /api/display/immich` (except `push_to_fraimic` and
-  `ignore_history`, `ephemeral`, `hold_minutes`). Only Immich rules can be replayed for now. The last rule is kept in
-  `./data/scheduler_state.json`, so displaying a photo never rewrites your settings.
+  `ignore_history`, `ephemeral`, `hold_minutes`), or of `POST /api/display/tmdb` for
+  `"kind": "tmdb"` rules. The last rule is kept in `./data/scheduler_state.json`, so
+  displaying a photo never rewrites your settings.
 - **Timer.** Any display (a manual photo, an upload, a refresh) restarts the interval, so
   a picture chosen by hand stays up for a full interval. A refresh that became due while
   the app was down runs about 30 s after startup.
@@ -329,6 +357,194 @@ automation:
       - service: rest_command.frame_rain_boost
 ```
 
+## Movie and TV posters (TMDB)
+
+`POST /api/display/tmdb` finds a movie or series on [TMDB](https://www.themoviedb.org)
+(`TMDB_API_KEY`: a v3 API key or a v4 read access token) and shows its best poster with the
+`poster` template.
+
+```bash
+curl -X POST http://localhost:8000/api/display/tmdb -H 'Content-Type: application/json' \
+  -d '{"query": "Le Fabuleux Destin d'"'"'Amélie Poulain", "media_type": "movie", "year": 2001}'
+curl -X POST .../api/display/tmdb -H 'Content-Type: application/json' \
+  -d '{"query": "The Office", "media_type": "tv", "season": 3, "language": "en-US"}'
+```
+
+| Request field | Meaning |
+| --- | --- |
+| `query` (or `title`) | Movie or series title |
+| `media_type` | `movie`, `tv` or `multi` (both, default; `auto` is accepted) |
+| `year`, `season` | Release year; TV season whose poster is preferred (falls back to the series poster) |
+| `language` | Overrides `tmdb.language` (default `fr-FR`), e.g. `fr-CA` |
+| `fallback_url`, `fallback_base64` | Picture used when TMDB has nothing, e.g. the Home Assistant `entity_picture` (base64 is tried first) |
+| `ephemeral`, `ttl_minutes`, `hold_minutes` | Temporary by default: the previous image returns after `ttl_minutes` (default `tmdb.ephemeral_ttl_minutes`, 180) |
+| `push_to_fraimic` | `false` only renders a preview |
+
+**Regional posters.** TMDB tags posters with a language and, for regional variants, a
+country (`fr`/`FR` for France, `fr`/`CA` for Québec). For `fr-FR`, posters are ranked:
+exact language and region, then the same language (any or no region), then textless
+artwork, then English, then anything else; ties go to the best rated
+(`vote_average`, then `vote_count`). Posters are downloaded at `tmdb.image_size`
+(`w780` by default; `original` is sharper on the 31.5" panel).
+
+**Fallbacks.** When TMDB is not configured, has no match or fails: `fallback_base64` /
+`fallback_url`, then `./data/assets/tmdb_fallback.png` if you provide one, then a title card
+(set `tmdb.fallback_title_card: false` to get the TMDB error instead). `details.fallback`
+tells which one was used.
+
+A non-ephemeral poster (`"ephemeral": false`) becomes the rule replayed by
+`POST /api/refresh`, and `"kind": "tmdb"` entries can join the [Smart Mix](#smart-mix-and-smart-search)
+(`{"kind": "tmdb", "params": {"query": "Amélie", "media_type": "movie"}, "weight": 1}`).
+`POST /api/display/media` is a deprecated alias.
+
+## Now playing (music)
+
+`POST /api/display/now-playing` shows the cover of the track that is playing with the
+`album` template.
+
+```bash
+curl -X POST http://localhost:8000/api/display/now-playing -H 'Content-Type: application/json' \
+  -d '{"title": "So What", "artist": "Miles Davis", "album": "Kind of Blue",
+       "duration_seconds": 545, "position_seconds": 12, "style": "vinyl"}'
+```
+
+| Request field | Meaning |
+| --- | --- |
+| `title`, `artist`, `album` | Track details (`media_title`, `media_artist`, `media_album_name` in Home Assistant) |
+| `artwork_url`, `artwork_base64` | Cover provided by the player (base64 is tried first) |
+| `enrich_artwork` | When no usable cover was provided, look one up (default true; also `music.enrich_artwork`) |
+| `style` | `sleeve` or `vinyl` (default `music.default_style`) |
+| `duration_seconds`, `position_seconds`, `ttl_seconds` | When the cover expires (see below) |
+| `ephemeral`, `hold_minutes`, `push_to_fraimic` | As for posters |
+
+**Cover lookup.** No API key is needed: the
+[Deezer](https://developers.deezer.com/api) public search (1000x1000 `cover_xl`), then
+[MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org)
+(studio albums are preferred over compilations, live albums and videos; requests are
+rate-limited to one per second as MusicBrainz asks). Lookups are cached in memory
+(`music.lookup_cache_size`). Without any cover, a typographic card is shown. Disable a
+service with `music.deezer_enabled` / `music.musicbrainz_enabled`.
+
+**Lifetime.** The cover expires when the track should be over: `duration_seconds -
+position_seconds + music.ttl_grace_seconds` (30), or `ttl_seconds`, or
+`music.default_ttl_minutes` (10). Sending the track that is already displayed only moves
+its expiry (`"deduplicated": true` in the response): nothing is rendered or sent again, so
+the Home Assistant automation can fire on every attribute change without waking a
+battery-powered frame.
+
+## Ephemeral images and the queue
+
+A push with `"ephemeral": true` (the default for posters, covers and smart searches) is
+temporary: it never becomes the image to come back to, nor the rule replayed by
+`POST /api/refresh`.
+
+- **Expiry.** Posters and covers carry an `expires_at`. When it passes, the previous
+  non-ephemeral image becomes the current image again. It is re-sent only if the frame may
+  not be showing it: a deep-sleeping frame that never received the cover is left alone,
+  and an expired image is dropped from the queue instead of being uploaded when the frame
+  wakes up.
+- **Cancellation.** `DELETE /api/queue/ephemeral` (e.g. playback paused or stopped) drops
+  a queued ephemeral image and restores the previous one immediately. It is idempotent
+  (`"cancelled": false` when nothing was ephemeral).
+- **No previous image yet?** A refresh of the active rule runs in the background instead.
+- Ending an ephemeral image also lifts its `hold_minutes` protection; it does not restart
+  the refresh timer.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/queue` | The upload waiting for the frame (expired images are never listed), the last delivery, and the ephemeral image shown or queued with its `expires_at` |
+| `DELETE /api/queue/ephemeral` | Cancel the ephemeral image now: `cancelled`, `dropped_pending`, `reverted`, `pushed_base`, `refreshing` |
+
+`GET /api/status` includes the same `ephemeral` block. The last successful delivery is kept
+in `./data/last_delivery.json`, so what the frame shows is still known after a restart.
+
+## Home Assistant: TV and music
+
+The app must be able to reach Home Assistant to download `entity_picture` (add its host
+to `URL_ALLOWLIST` when `BLOCK_PRIVATE_URLS=true`). Replace `media_player.living_room` and
+`http://homeassistant.lan:8123` with yours. Picture URLs embed short-lived access tokens;
+the app never writes them to its logs.
+
+```yaml
+rest_command:
+  frame_now_playing:
+    url: http://smart-frame.lan:8000/api/display/now-playing
+    method: POST
+    content_type: "application/json; charset=utf-8"
+    timeout: 30
+    headers:
+      X-API-Key: !secret smart_frame_api_key   # only when APP_API_KEY is set
+    payload: >-
+      {% set p = 'media_player.living_room' %}
+      {% set pic = state_attr(p, 'entity_picture') %}
+      {{ {
+        "title": state_attr(p, 'media_title'),
+        "artist": state_attr(p, 'media_artist') or 'Unknown artist',
+        "album": state_attr(p, 'media_album_name'),
+        "artwork_url": ('http://homeassistant.lan:8123' ~ pic) if pic else none,
+        "duration_seconds": state_attr(p, 'media_duration'),
+        "position_seconds": state_attr(p, 'media_position')
+      } | to_json }}
+  frame_tv_poster:
+    url: http://smart-frame.lan:8000/api/display/tmdb
+    method: POST
+    content_type: "application/json; charset=utf-8"
+    timeout: 30
+    headers:
+      X-API-Key: !secret smart_frame_api_key
+    payload: >-
+      {% set p = 'media_player.living_room' %}
+      {% set pic = state_attr(p, 'entity_picture') %}
+      {% set series = state_attr(p, 'media_series_title') %}
+      {{ {
+        "query": series or state_attr(p, 'media_title'),
+        "media_type": 'tv' if series else 'movie',
+        "season": state_attr(p, 'media_season') if series else none,
+        "fallback_url": ('http://homeassistant.lan:8123' ~ pic) if pic else none,
+        "ttl_minutes": [((state_attr(p, 'media_duration') or 7200) / 60) | int + 15, 1440] | min
+      } | to_json }}
+  frame_cancel_ephemeral:
+    url: http://smart-frame.lan:8000/api/queue/ephemeral
+    method: DELETE
+    headers:
+      X-API-Key: !secret smart_frame_api_key
+
+automation:
+  - alias: Frame - now playing
+    mode: queued
+    trigger:
+      - platform: state
+        entity_id: media_player.living_room
+        to: playing
+      - platform: state
+        entity_id: media_player.living_room
+        attribute: media_title
+    condition:
+      - condition: state
+        entity_id: media_player.living_room
+        state: playing
+    action:
+      - choose:
+          - conditions: "{{ state_attr('media_player.living_room', 'media_content_type') == 'music' }}"
+            sequence:
+              - service: rest_command.frame_now_playing
+          - conditions: "{{ state_attr('media_player.living_room', 'media_content_type') in ['movie', 'tvshow', 'episode'] }}"
+            sequence:
+              - service: rest_command.frame_tv_poster
+  - alias: Frame - playback stopped
+    trigger:
+      - platform: state
+        entity_id: media_player.living_room
+        from: playing
+        for: "00:02:00"   # ignore short pauses
+    action:
+      - service: rest_command.frame_cancel_ephemeral
+```
+
+The now-playing call is deduplicated, so the `media_title` trigger only re-renders when the
+track really changes. A deep-sleeping frame wakes up to the right picture: covers whose
+song has ended are dropped from the queue, and the previous photo comes back.
+
 ## Development
 
 ```bash
@@ -345,6 +561,14 @@ The palette, color metric, Atkinson kernel and `.bin` layouts follow the officia
 [Fraimic Bin Converter](https://github.com/Fraimic/fraimic_bin_converter) (MIT), which
 builds on Toon-nooT's
 [PhotoPainter Spectra 6 converter](https://github.com/Toon-nooT/PhotoPainter-E-Ink-Spectra-6-image-converter).
+
+Templates use the [Inter](https://github.com/rsms/inter) typeface by Rasmus Andersson,
+bundled under the SIL Open Font License 1.1 (`app/assets/fonts/OFL.txt`).
+
+This product uses the TMDB API but is not endorsed or certified by
+[TMDB](https://www.themoviedb.org). Album covers come from the
+[Deezer API](https://developers.deezer.com), [MusicBrainz](https://musicbrainz.org) and the
+[Cover Art Archive](https://coverartarchive.org).
 
 ## License
 
