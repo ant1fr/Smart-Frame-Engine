@@ -119,3 +119,10 @@ def test_request_validation() -> None:
         TmdbRequest(query="x", language="french")
     with pytest.raises(ValueError):
         TmdbRequest(query="   ")
+
+
+def test_fold_transliterates_ligatures() -> None:
+    assert fold("Ágætis byrjun") == "agaetis byrjun"
+    assert fold("Œuvre") == "oeuvre"
+    assert fold("Straße") == "strasse"
+    assert fold("Søren") == "soren"

@@ -15,6 +15,7 @@ from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
 from app.services.ephemeral import EphemeralService
+from app.services.now_playing import NowPlayingService
 from app.services.scheduler import SchedulerService
 
 
@@ -68,6 +69,11 @@ def get_ephemeral_service(request: Request) -> EphemeralService:
     return cast(EphemeralService, request.app.state.ephemeral_service)
 
 
+def get_now_playing_service(request: Request) -> NowPlayingService:
+    """Now-playing album covers."""
+    return cast(NowPlayingService, request.app.state.now_playing_service)
+
+
 def get_people_directory(request: Request) -> PeopleDirectory:
     """Cache of the people known to each Immich account."""
     return cast(PeopleDirectory, request.app.state.people_directory)
@@ -84,3 +90,4 @@ PeopleDirectoryDep = Annotated[PeopleDirectory, Depends(get_people_directory)]
 SchedulerDep = Annotated[SchedulerService, Depends(get_scheduler_service)]
 EphemeralServiceDep = Annotated[EphemeralService, Depends(get_ephemeral_service)]
 PosterResolverDep = Annotated[PosterResolver, Depends(get_poster_resolver)]
+NowPlayingServiceDep = Annotated[NowPlayingService, Depends(get_now_playing_service)]

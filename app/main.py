@@ -24,6 +24,7 @@ from app.api.routes import display as display_routes
 from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
 from app.api.routes import immich as immich_routes
+from app.api.routes import now_playing as now_playing_routes
 from app.api.routes import queue as queue_routes
 from app.api.routes import refresh as refresh_routes
 from app.api.routes import smart_mix as smart_mix_routes
@@ -40,11 +41,13 @@ from app.core.proxy import RootPathMiddleware
 from app.core.security import URLPolicy
 from app.core.settings import EnvSettings, get_env_settings
 from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
+from app.providers.music import ArtworkResolver
 from app.providers.tmdb import PosterResolver, TmdbProvider
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
 from app.services.ephemeral import EphemeralService
+from app.services.now_playing import NowPlayingService
 from app.services.scheduler import SchedulerService, immich_runner, tmdb_runner
 
 logger = logging.getLogger(__name__)
@@ -123,6 +126,10 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         image_fetcher = ImageFetcher(url_policy, settings.max_upload_bytes)
         tmdb = TmdbProvider(config_store, image_fetcher)
         poster_resolver = PosterResolver(tmdb, image_fetcher, config_store, settings.assets_dir)
+        artwork = ArtworkResolver(config_store, image_fetcher)
+        now_playing = NowPlayingService(
+            config_store, display, current_store, image_fetcher, artwork
+        )
         scheduler = SchedulerService(
             settings.scheduler_state_path,
             config_store,
@@ -152,6 +159,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         app.state.ephemeral_service = ephemeral
         app.state.image_fetcher = image_fetcher
         app.state.poster_resolver = poster_resolver
+        app.state.now_playing_service = now_playing
 
         await ephemeral.start()  # before the delivery worker can drop an expired image
         await delivery.start()
@@ -175,6 +183,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             await scheduler.stop()
             await ephemeral.stop()
             await delivery.stop()
+            await artwork.aclose()
             await image_fetcher.aclose()
             logger.info("Smart Frame Engine stopped")
 
@@ -225,6 +234,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(display_routes.router)
     app.include_router(immich_routes.display_router)
     app.include_router(tmdb_routes.display_router)
+    app.include_router(now_playing_routes.display_router)
     app.include_router(immich_routes.router)
     app.include_router(refresh_routes.router)
     app.include_router(smart_mix_routes.display_router)
