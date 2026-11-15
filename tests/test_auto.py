@@ -28,6 +28,7 @@ def stats(**overrides: Any) -> ContentStats:
         "luma_mean": 120.0,
         "luma_std": 55.0,
         "highlight_share": 0.5,
+        "black_share": 1.0,
         "flat_share": 5.0,
         "dominant_colors": 300,
         "detail": 12.0,
@@ -45,7 +46,7 @@ def photo(seed: int = 0, size: tuple[int, int] = (240, 320)) -> Image.Image:
 def test_measure_content_tells_noise_from_gradients_and_graphics() -> None:
     noisy = measure_content(photo())
     assert noisy.detail > 25 and noisy.smooth_share == 0.0
-    assert not noisy.graphic and not noisy.smooth
+    assert not noisy.is_graphic("photo") and not noisy.is_smooth("photo")
 
     ramp = np.tile(np.linspace(40, 200, 320, dtype=np.float32), (240, 1))
     sky = measure_content(Image.fromarray(np.dstack([ramp, ramp, ramp + 20]).astype(np.uint8)))
@@ -54,7 +55,8 @@ def test_measure_content_tells_noise_from_gradients_and_graphics() -> None:
     logo = Image.new("RGB", (300, 300), (255, 255, 255))
     logo.paste((200, 20, 20), (100, 100, 200, 200))
     flat = measure_content(logo)
-    assert flat.graphic and flat.dominant_colors <= 3 and flat.flat_share > 60
+    assert flat.is_graphic("album") and flat.dominant_colors <= 3 and flat.flat_share > 60
+    assert not flat.is_graphic("photo")  # a photo is never graphic, whatever its colors
 
 
 def test_measure_content_handles_tiny_images() -> None:
@@ -69,11 +71,15 @@ def test_measure_content_handles_tiny_images() -> None:
         ("album", {"dominant_colors": 6}, "official"),  # graphic cover
         ("album", {"flat_share": 60.0}, "official"),
         ("album", {}, "soft"),  # photographic cover
-        ("poster", {"highlight_share": 6.0}, "soft"),  # bright faces
-        ("poster", {"luma_std": 70.0}, "soft"),  # contrasty
+        ("poster", {"highlight_share": 6.0}, "photo"),  # bright faces: deep blacks, rich colors
+        ("poster", {"luma_std": 70.0}, "photo"),  # contrasty
         ("poster", {"luma_std": 40.0, "highlight_share": 0.5}, "vivid"),  # flat, muted
+        ("poster", {"dominant_colors": 13}, "official"),  # flat-color graphic poster
+        ("poster", {"flat_share": 60.0, "luma_std": 40.0}, "vivid"),  # dark backdrop only
         ("photo", {"luma_mean": 60.0}, "soft"),  # dark
         ("photo", {"luma_std": 30.0}, "soft"),  # low contrast
+        ("photo", {"luma_mean": 178.0, "luma_std": 34.0, "black_share": 0.0}, "vivid"),  # snow
+        ("photo", {"luma_mean": 170.0, "black_share": 6.0}, "photo"),  # bright but has blacks
         ("photo", {}, "photo"),
     ],
 )
@@ -85,6 +91,24 @@ def test_a_title_card_or_missing_artwork_is_natural() -> None:
     assert decide_profile("poster", None)[0] == "natural"
 
 
+def test_a_dark_photo_with_a_big_flat_background_is_not_graphic() -> None:
+    """Real case: a night photo (3 dominant colors, 78% flat black) was read as a drawing."""
+    night = stats(dominant_colors=3, flat_share=78.0, luma_mean=20.0, black_share=78.0)
+    assert not night.is_graphic("photo")
+    profile, reason = decide_profile("photo", night)
+    assert profile == "soft" and "dark photo" in reason
+    assert decide_dither("photo", night)[0] != "atkinson-classic"
+    # ...while the same numbers on an album cover are a graphic.
+    assert decide_profile("album", night)[0] == "official"
+
+
+def test_a_bright_snow_photo_keeps_its_whites() -> None:
+    snow = stats(luma_mean=178.0, luma_std=34.0, black_share=0.0, highlight_share=0.0)
+    profile, reason = decide_profile("photo", snow)
+    assert profile == "vivid" and "bright photo" in reason
+    assert decide_profile("photo", stats(luma_mean=60.0, black_share=0.0))[0] == "soft"  # dark wins
+
+
 # --- dither ----------------------------------------------------------------------------------
 @pytest.mark.parametrize(
     ("context", "overrides", "expected"),
@@ -92,6 +116,7 @@ def test_a_title_card_or_missing_artwork_is_natural() -> None:
         ("title_card", {}, "atkinson-classic"),
         ("album", {"dominant_colors": 5}, "atkinson-classic"),
         ("poster", {"dominant_colors": 8}, "atkinson-classic"),  # flat graphic poster
+        ("photo", {"dominant_colors": 3, "flat_share": 78.0}, SERPENTINE),  # night photo
         ("photo", {"smooth_share": 0.7}, "stucki"),
         ("photo", {}, SERPENTINE),
         ("poster", {"smooth_share": 0.9}, SERPENTINE),  # posters keep their detail
@@ -112,7 +137,7 @@ def test_serpentine_falls_back_to_fs_without_numba(monkeypatch: pytest.MonkeyPat
 # --- resolve ---------------------------------------------------------------------------------
 def test_auto_settings_are_filled_in_and_explained() -> None:
     concrete, decision = resolve(EinkConfig(), "poster", stats(highlight_share=8.0))
-    assert (concrete.profile, concrete.dither) == ("soft", SERPENTINE)
+    assert (concrete.profile, concrete.dither) == ("photo", SERPENTINE)
     assert decision.automatic and decision.context == "poster"
     assert len(decision.reasons) == 2 and "contrasty poster" in decision.reasons[0]
     assert (concrete.brightness, concrete.contrast, concrete.edge_filters) == (1.0, 1.0, False)

@@ -28,6 +28,7 @@ def neutral_eink() -> dict[str, Any]:
         "contrast": 1.0,
         "saturation": 1.0,
         "edge_filters": False,
+        "profile": "official",  # not "auto": these tests check geometry, not the look
         "dither": "floyd_steinberg",
     }
 

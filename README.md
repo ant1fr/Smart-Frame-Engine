@@ -43,13 +43,18 @@ of a 256 px thumbnail (a few milliseconds):
 | Image | Profile | Dithering |
 | --- | --- | --- |
 | Title card | `natural` | `atkinson-classic` |
-| Graphic (few colors, large flat areas) | `official` | `atkinson-classic` |
+| Graphic: an album cover with very few colors or large flat areas, a poster with very few colors | `official` | `atkinson-classic` |
 | Album cover | `soft` | `atkinson-classic` (flat lettering must not smear) |
-| Poster with bright highlights or strong contrast | `soft` (protects faces) | `fs-serpentine` |
+| Poster with bright highlights or strong contrast | `photo` (deep blacks, rich colors, natural skin) | `fs-serpentine` |
 | Flat or muted poster | `vivid` | `fs-serpentine` |
-| Dark or low-contrast photo | `soft` | `fs-serpentine` |
+| Dark photo | `soft` (lifted shadows) | `fs-serpentine` |
+| Bright photo without blacks (snow, beach, fog) | `vivid` (keeps the whites) | `fs-serpentine` |
+| Low-contrast photo | `soft` | `fs-serpentine` |
 | Photo with large smooth regions (sky, fog) | `photo` | `stucki` |
 | Other photos | `photo` | `fs-serpentine` |
+
+A photo is never treated as a graphic, however flat its background: a night shot with a big
+black sky or a snowfield is still a photograph.
 
 An explicit value always wins and `auto` only fills in the rest. `GET /api/status` reports
 what was used and why in `current_image.render` (`profile`, `dither`, `reasons`).
