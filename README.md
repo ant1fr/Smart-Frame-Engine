@@ -18,8 +18,33 @@ mkdir -p data               # must be writable by PUID:PGID (default 1000:1000)
 docker compose up -d
 ```
 
-- API docs: `http://<host>:8000/docs`
-- Health: `http://<host>:8000/api/health`
+- API docs: `http://<host>:8080/docs`
+- Health: `http://<host>:8080/api/health`
+
+## Security
+
+| Setup | Effect |
+| --- | --- |
+| Nothing set | Pure LAN usage: everything is open. |
+| `APP_API_KEY` only | `POST`/`PUT`/`DELETE`, `/api/config`, `/api/immich`, `/api/smart-mix` need the key; reads stay public. |
+| `ADMIN_PASSWORD` | Web UI login (`admin` + password). **Everything** needs a session or the API key except `/api/health`, the login and, while `PUBLIC_IMAGE_ENDPOINTS=true`, the image endpoints. |
+
+- **API key.** Send it as `X-API-Key: <key>`, `Authorization: Bearer <key>` or `?api_key=`.
+  With `ADMIN_PASSWORD` and no `APP_API_KEY`, a key is generated into `./data/secrets.json`
+  (readable by its owner only); the signed-in admin can view, copy and regenerate it
+  (`GET /api/auth/api-key`, `POST /api/auth/api-key/regenerate`). A key set in `.env` is
+  pinned and cannot be changed through the API it protects.
+- **Login.** `POST /api/auth/login` sets a signed `HttpOnly`, `SameSite=Strict` session
+  cookie (`Secure` behind HTTPS, scoped to `ROOT_PATH`), valid `SESSION_TTL_HOURS` (one
+  week). Changing `ADMIN_PASSWORD` signs everyone out. Repeated failures are throttled per
+  client (exponential backoff, up to 5 minutes). Without `ADMIN_PASSWORD` but with an API
+  key, the login accepts the API key as the password.
+- **CSRF.** Requests authenticated by the cookie that change something must send
+  `X-Requested-With: SmartFrame`; browsers cannot add it cross-site without a CORS preflight.
+  API key requests are unaffected.
+- `GET /api/auth/session` tells the mode (`open`, `key`, `password`) and whether the caller
+  is signed in. Home Assistant sensors that poll `/api/status` need the API key once
+  `ADMIN_PASSWORD` is set.
 
 Runtime settings are stored in `./data/config.json` and can be edited with
 `GET`/`PUT /api/config`. Values saved there take precedence over `.env`, which in turn
@@ -146,7 +171,7 @@ IMMICH_URL=http://immich.lan:2283
 IMMICH_API_KEY=...
 
 # A random photo with Alice and Bob together
-curl -X POST http://localhost:8000/api/display/immich -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8080/api/display/immich -H 'Content-Type: application/json' \
   -d '{"persons": ["Alice", "Bob"], "match_mode": "all"}'
 
 # CLIP search, favorites, or an album
@@ -229,7 +254,7 @@ are cropped without face boxes.
 | `GET /api/immich/albums` | Albums across accounts (`?accounts=`) |
 | `GET /api/immich/people` / `POST /api/immich/people/refresh` | Resolved people per account, ambiguity and alias mapping |
 
-`GET /api/immich/*` requires the API key when `APP_API_KEY` is set (it lists family member
+`GET /api/immich/*` requires the API key (or a login) when authentication is on (it lists family member
 names). A LAN Immich needs `URL_ALLOWLIST` when `BLOCK_PRIVATE_URLS=true`.
 
 ## Frame delivery
@@ -264,7 +289,7 @@ rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default
   Pin a fixed rule in `scheduler.source_rule` to override the others:
 
   ```bash
-  curl -X PUT http://localhost:8000/api/config -H 'Content-Type: application/json'     -d '{"scheduler": {"enabled": true, "source_rule":
+  curl -X PUT http://localhost:8080/api/config -H 'Content-Type: application/json'     -d '{"scheduler": {"enabled": true, "source_rule":
          {"kind": "immich", "params": {"mode": "favorites", "persons": ["Alice"]}}}}'
   ```
 
@@ -294,11 +319,11 @@ rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default
 # Home Assistant: a "next photo" button
 rest_command:
   frame_next_photo:
-    url: http://smart-frame.lan:8000/api/refresh
+    url: http://smart-frame.lan:8080/api/refresh
     method: POST
     timeout: 60   # selecting, downloading and dithering a photo takes a few seconds
     headers:
-      X-API-Key: !secret smart_frame_api_key   # only when APP_API_KEY is set
+      X-API-Key: !secret smart_frame_api_key   # when APP_API_KEY or ADMIN_PASSWORD is set
 ```
 
 ## Smart Mix and Smart Search
@@ -310,7 +335,7 @@ body of the matching display endpoint), and the runner registered for that `kind
 Adding a provider later needs no change to the configuration.
 
 ```bash
-curl -X PUT http://localhost:8000/api/config -H 'Content-Type: application/json' -d '{
+curl -X PUT http://localhost:8080/api/config -H 'Content-Type: application/json' -d '{
   "scheduler": {"enabled": true, "interval_hours": 3},
   "smart_mix": {"enabled": true, "entries": [
     {"label": "Family", "kind": "immich", "weight": 5,
@@ -346,7 +371,7 @@ curl -X PUT http://localhost:8000/api/config -H 'Content-Type: application/json'
 **Smart Search** is the same idea for one-off pushes: describe what you want, never an ID.
 
 ```bash
-curl -X POST http://localhost:8000/api/display/smart-search -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8080/api/display/smart-search -H 'Content-Type: application/json' \
   -d '{"query": "rainy sunday", "persons": ["Alice"], "hold_minutes": 120}'
 curl -X POST .../api/display/smart-search -H 'Content-Type: application/json' \
   -d '{"on_this_day": true}'
@@ -385,7 +410,7 @@ last refresh (`last_run.entry_label`).
 # Home Assistant: push a contextual photo on demand, boost the mix while it rains
 rest_command:
   frame_smart_search:
-    url: http://smart-frame.lan:8000/api/display/smart-search
+    url: http://smart-frame.lan:8080/api/display/smart-search
     method: POST
     content_type: application/json
     payload: '{"query": "{{ query }}", "hold_minutes": {{ hold | default(120) }}}'
@@ -393,7 +418,7 @@ rest_command:
     headers:
       X-API-Key: !secret smart_frame_api_key
   frame_rain_boost:
-    url: http://smart-frame.lan:8000/api/smart-mix/context
+    url: http://smart-frame.lan:8080/api/smart-mix/context
     method: POST
     content_type: application/json
     payload: '{"queries": ["cozy rainy day"], "weight": 5, "ttl_minutes": 240, "label": "rain"}'
@@ -417,7 +442,7 @@ automation:
 `poster` template.
 
 ```bash
-curl -X POST http://localhost:8000/api/display/tmdb -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8080/api/display/tmdb -H 'Content-Type: application/json' \
   -d '{"query": "Le Fabuleux Destin d'"'"'Amélie Poulain", "media_type": "movie", "year": 2001}'
 curl -X POST .../api/display/tmdb -H 'Content-Type: application/json' \
   -d '{"query": "The Office", "media_type": "tv", "season": 3, "language": "en-US"}'
@@ -464,7 +489,7 @@ A non-ephemeral poster (`"ephemeral": false`) becomes the rule replayed by
 `album` template.
 
 ```bash
-curl -X POST http://localhost:8000/api/display/now-playing -H 'Content-Type: application/json' \
+curl -X POST http://localhost:8080/api/display/now-playing -H 'Content-Type: application/json' \
   -d '{"title": "So What", "artist": "Miles Davis", "album": "Kind of Blue",
        "duration_seconds": 545, "position_seconds": 12, "style": "vinyl"}'
 ```
@@ -532,12 +557,12 @@ the app never writes them to its logs.
 ```yaml
 rest_command:
   frame_now_playing:
-    url: http://smart-frame.lan:8000/api/display/now-playing
+    url: http://smart-frame.lan:8080/api/display/now-playing
     method: POST
     content_type: "application/json; charset=utf-8"
     timeout: 30
     headers:
-      X-API-Key: !secret smart_frame_api_key   # only when APP_API_KEY is set
+      X-API-Key: !secret smart_frame_api_key   # when APP_API_KEY or ADMIN_PASSWORD is set
     payload: >-
       {% set p = 'media_player.living_room' %}
       {% set pic = state_attr(p, 'entity_picture') %}
@@ -550,7 +575,7 @@ rest_command:
         "position_seconds": state_attr(p, 'media_position')
       } | to_json }}
   frame_tv_poster:
-    url: http://smart-frame.lan:8000/api/display/tmdb
+    url: http://smart-frame.lan:8080/api/display/tmdb
     method: POST
     content_type: "application/json; charset=utf-8"
     timeout: 30
@@ -568,7 +593,7 @@ rest_command:
         "ttl_minutes": [((state_attr(p, 'media_duration') or 7200) / 60) | int + 15, 1440] | min
       } | to_json }}
   frame_cancel_ephemeral:
-    url: http://smart-frame.lan:8000/api/queue/ephemeral
+    url: http://smart-frame.lan:8080/api/queue/ephemeral
     method: DELETE
     headers:
       X-API-Key: !secret smart_frame_api_key
@@ -616,7 +641,7 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ruff check . && ruff format --check . && mypy app && pytest
-DATA_DIR=./data python -m app      # serve on http://localhost:8000
+DATA_DIR=./data python -m app      # serve on http://localhost:8080
 ```
 
 `python scripts/quality_ab.py` renders a dark photo, a bright photo, a poster and an album

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app import __version__
 from app.api.deps import (
+    AuthStateDep,
     ConfigStoreDep,
     CurrentImageStoreDep,
     DeliveryServiceDep,
@@ -65,6 +66,7 @@ class StatusResponse(BaseModel):
     version: str
     uptime_s: float
     auth_enabled: bool
+    auth_mode: str = Field(description="open, key (API key only) or password (admin login)")
     public_image_endpoints: bool
     frame: FrameStatus
     delivery: DeliveryStatus
@@ -88,6 +90,7 @@ async def health() -> HealthResponse:
 async def status(
     request: Request,
     settings: SettingsDep,
+    auth: AuthStateDep,
     store: ConfigStoreDep,
     current: CurrentImageStoreDep,
     delivery: DeliveryServiceDep,
@@ -101,7 +104,8 @@ async def status(
     return StatusResponse(
         version=__version__,
         uptime_s=round(time.monotonic() - started_at, 1),
-        auth_enabled=settings.auth_enabled,
+        auth_enabled=auth.mode != "open",
+        auth_mode=auth.mode,
         public_image_endpoints=settings.public_image_endpoints,
         frame=FrameStatus(
             panel=config.fraimic.panel,

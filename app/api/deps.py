@@ -6,6 +6,7 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
+from app.core.auth import AuthState
 from app.core.config_store import ConfigStore
 from app.core.history_store import HistoryStore
 from app.core.settings import EnvSettings
@@ -22,6 +23,11 @@ from app.services.scheduler import SchedulerService
 def get_settings(request: Request) -> EnvSettings:
     """Environment settings the application was created with."""
     return cast(EnvSettings, request.app.state.settings)
+
+
+def get_auth_state(request: Request) -> AuthState:
+    """Effective credentials (admin password, API key, session signing)."""
+    return cast(AuthState, request.app.state.auth_state)
 
 
 def get_config_store(request: Request) -> ConfigStore:
@@ -80,6 +86,7 @@ def get_people_directory(request: Request) -> PeopleDirectory:
 
 
 SettingsDep = Annotated[EnvSettings, Depends(get_settings)]
+AuthStateDep = Annotated[AuthState, Depends(get_auth_state)]
 ConfigStoreDep = Annotated[ConfigStore, Depends(get_config_store)]
 HistoryStoreDep = Annotated[HistoryStore, Depends(get_history_store)]
 CurrentImageStoreDep = Annotated[CurrentImageStore, Depends(get_current_image_store)]
