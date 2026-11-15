@@ -502,3 +502,81 @@ async def test_find_falls_back_to_the_standard_cover_url(setup: Setup) -> None:
     respx.get(DZ_XL).respond(content=png_bytes())
     artwork = await setup.resolver.find(title="s", artist="A", album="B", min_side=1181)
     assert artwork is not None and artwork.data == png_bytes()
+
+
+@respx.mock
+async def test_musicbrainz_prefers_the_album_over_a_single_with_the_same_title(
+    setup: Setup,
+) -> None:
+    """Real case: "Thriller" by Michael Jackson is a Single (listed first) and the Album."""
+    respx.get(f"{DEEZER}/search/album").respond(json={"data": []})
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    credit = [{"name": "Michael Jackson"}]
+    respx.get(f"{MB}/release-group/").respond(
+        json={
+            "release-groups": [
+                {
+                    "id": "single",
+                    "score": 100,
+                    "title": "Thriller",
+                    "primary-type": "Single",
+                    "artist-credit": credit,
+                },
+                {
+                    "id": "album",
+                    "score": 100,
+                    "title": "Thriller",
+                    "primary-type": "Album",
+                    "artist-credit": credit,
+                },
+                {
+                    "id": "demos",
+                    "score": 87,
+                    "title": "The Thriller Demos",
+                    "primary-type": "Album",
+                    "secondary-types": ["Demo"],
+                    "artist-credit": credit,
+                },
+            ]
+        }
+    )
+    match = await setup.resolver.lookup(
+        title="Thriller", artist="Michael Jackson", album="Thriller"
+    )
+    assert match is not None and match.url.endswith("/release-group/album/front-1200")
+
+
+@respx.mock
+async def test_musicbrainz_title_beats_type_and_order_breaks_ties(setup: Setup) -> None:
+    respx.get(f"{DEEZER}/search/album").respond(json={"data": []})
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    credit = [{"name": "Band"}]
+    respx.get(f"{MB}/release-group/").respond(
+        json={
+            "release-groups": [
+                {
+                    "id": "greatest",
+                    "score": 100,
+                    "title": "Greatest Hits",
+                    "primary-type": "Album",
+                    "artist-credit": credit,
+                },
+                {
+                    "id": "first",
+                    "score": 95,
+                    "title": "Wanted",
+                    "primary-type": "Single",
+                    "artist-credit": credit,
+                },
+                {
+                    "id": "second",
+                    "score": 95,
+                    "title": "Wanted",
+                    "primary-type": "Single",
+                    "artist-credit": credit,
+                },
+            ]
+        }
+    )
+    match = await setup.resolver.lookup(title="x", artist="Band", album="Wanted")
+    assert match is not None and "/first/" in match.url  # exact title wins, then MB order
