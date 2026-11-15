@@ -55,6 +55,7 @@ class AssetDto(_Dto):
     isArchived: bool = False
     isTrashed: bool = False
     isEdited: bool = False
+    visibility: str = "timeline"
     localDateTime: str | None = None
     fileCreatedAt: str | None = None
     width: int | None = None
@@ -93,7 +94,12 @@ class SearchFilters:
 
     def body(self, size: int) -> dict[str, object]:
         """JSON body for ``/search/random`` and ``/search/smart``."""
-        body: dict[str, object] = {"type": "IMAGE", "size": size, "withExif": True}
+        body: dict[str, object] = {
+            "type": "IMAGE",
+            "size": size,
+            "withExif": True,
+            "withPeople": True,
+        }
         if self.person_ids:
             body["personIds"] = list(self.person_ids)
         if self.album_ids:
@@ -205,6 +211,10 @@ class ImmichDisplayRequest(BaseModel):
         ge=1,
         le=10080,
         description="Keep this image up for at least this long before a scheduled refresh",
+    )
+    whole_library: bool = Field(
+        default=False,
+        description="Ignore the default persons, album and favorites filters (Random Discovery)",
     )
     skip_quality_gate: bool | None = Field(
         default=None,

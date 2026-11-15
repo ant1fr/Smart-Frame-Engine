@@ -42,7 +42,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
-from app.core.config_models import RuntimeConfig, SchedulerConfig, SourceRule
+from app.core.config_models import RuntimeConfig, SchedulerConfig, SmartMixConfig, SourceRule
 from app.core.config_store import ConfigStore
 from app.core.context import RuleContext, expand_params
 from app.core.json_store import atomic_write_json, read_json
@@ -51,6 +51,7 @@ from app.providers.base import ProviderError
 from app.providers.immich import ImmichDisplayRequest, ImmichProvider
 from app.providers.tmdb import PosterResolver
 from app.providers.tmdb.models import TmdbDisplayRequest
+from app.services.ambient import AmbientState, ambient_candidates
 from app.services.display import DisplayResult, DisplayService
 from app.services.schedule import QuietWindow, in_quiet, next_run_at
 from app.services.smart_mix import MixCandidate, MixContext, SmartMixResolver
@@ -64,6 +65,11 @@ _MAX_BACKOFF_EXPONENT: Final = 16
 RefreshReason = Literal["scheduled", "manual", "revert"]
 RunStatus = Literal["ok", "failed", "skipped"]
 RuleSource = Literal["pinned", "smart_mix", "last"]
+DISCOVERY_LABEL: Final = "discovery"
+#: Whole-library random photo: the quality gate stays on (``skip_quality_gate=False``).
+DISCOVERY_RULE: Final = SourceRule(
+    kind="immich", params={"mode": "random", "whole_library": True, "skip_quality_gate": False}
+)
 Clock = Callable[[], datetime]
 RuleRunner = Callable[[SourceRule], Awaitable[DisplayResult]]
 
@@ -144,6 +150,9 @@ class SchedulerState(BaseModel):
     )
     hold_until: AwareDatetime | None = Field(
         default=None, description="A pushed image stays up at least until then"
+    )
+    ambient: AmbientState = Field(
+        default_factory=AmbientState, description="Ambient context fields (POST /api/context)"
     )
 
 
@@ -229,6 +238,7 @@ class SchedulerSnapshot(BaseModel):
         description="A directly pushed image is protected from scheduled refreshes until then"
     )
     smart_mix: SmartMixStatus
+    ambient: AmbientState = Field(description="Live ambient context (POST /api/context)")
     active_rule: ActiveRuleView | None = Field(description="null until something can be replayed")
 
 
@@ -369,7 +379,28 @@ class SchedulerService:
 
     def mix_pool(self) -> list[MixCandidate]:
         """Candidates currently in the Smart Mix (enabled entries plus the live context)."""
-        return self._resolver.pool(self._config.smart_mix, self.live_context())
+        return self._resolver.pool(
+            self._config.smart_mix, self.live_context(), self.ambient_extras()
+        )
+
+    # --- Ambient context ---------------------------------------------------------------
+    def live_ambient(self) -> AmbientState:
+        """The ambient context fields that have not expired."""
+        return self._state.ambient.live(self._clock())
+
+    def ambient_extras(self) -> list[MixCandidate]:
+        """Candidates added to the Smart Mix by the live ambient context."""
+        return ambient_candidates(self.live_ambient(), self._config.ambient)
+
+    def family_override(self) -> bool | None:
+        """``family_mode`` of the live ambient context (``None`` = follow the settings)."""
+        flag = self.live_ambient().family_mode
+        return flag.value if flag is not None else None
+
+    async def set_ambient(self, state: AmbientState) -> None:
+        """Replace the ambient context (an empty state clears it)."""
+        await self._save(ambient=state)
+        self._arm()
 
     def live_context(self) -> MixContext | None:
         """The Smart Mix context boost, unless it has expired."""
@@ -382,7 +413,7 @@ class SchedulerService:
         if pinned is not None:
             return ActiveRule(pinned, "pinned")
         mix = self._config.smart_mix
-        if mix.enabled and self._resolver.pool(mix, self.live_context()):
+        if mix.enabled and self.mix_pool():
             return ActiveRule(None, "smart_mix")
         if self._state.last_rule is not None:
             return ActiveRule(self._state.last_rule, "last")
@@ -419,6 +450,7 @@ class SchedulerService:
                 entries=sum(1 for e in self._config.smart_mix.entries if e.enabled),
                 context=self.context_view(),
             ),
+            ambient=self.live_ambient(),
             active_rule=(
                 ActiveRuleView(kind=active.kind, source=active.source) if active else None
             ),
@@ -622,8 +654,14 @@ class SchedulerService:
         if active.rule is not None:
             return await self._attempt(MixCandidate(active.rule))
         mix = self._config.smart_mix
+        discovery = await self._discover(mix)
+        if discovery is not None:
+            return discovery
         order = self._resolver.order(
-            mix, self.live_context(), last_index=self._state.last_mix_index
+            mix,
+            self.live_context(),
+            last_index=self._state.last_mix_index,
+            extras=self.ambient_extras(),
         )
         failure: Exception | None = None
         for candidate in order[: mix.max_attempts]:
@@ -644,6 +682,30 @@ class SchedulerService:
             raise NoRuleError("Smart Mix has no enabled entry")
         raise failure
 
+    async def _discover(self, mix: SmartMixConfig) -> tuple[DisplayResult, MixCandidate] | None:
+        """Random Discovery: on a hit, a photo of the whole library (``None`` = use the mix).
+
+        The quality gate stays on and Family Mode / the Locked Folder rule still apply
+        (they live in the Immich provider). Any failure falls back to the weighted entries.
+        """
+        context = self.live_context()
+        if "immich" not in self._runners or (context is not None and context.exclusive):
+            return None
+        if not self._resolver.roll(mix.discovery_share):
+            return None
+        candidate = MixCandidate(DISCOVERY_RULE, 1.0, None, DISCOVERY_LABEL)
+        try:
+            return await self._attempt(candidate)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if not isinstance(exc, ProviderError | RefreshError | InvalidImageError):
+                logger.exception("Random Discovery crashed")
+            logger.info(
+                "Random Discovery found nothing, using the Smart Mix: %s", _safe_detail(exc)
+            )
+            return None
+
     async def _attempt(self, candidate: MixCandidate) -> tuple[DisplayResult, MixCandidate]:
         rule = candidate.rule.model_copy(update={"params": self.expand(candidate.rule.params)})
         runner = self._runner(rule)
@@ -655,6 +717,7 @@ class SchedulerService:
             self._clock(),
             ZoneInfo(self._config.scheduler.timezone),
             self._config.smart_mix.hemisphere,
+            self.live_ambient().season_override(),
         )
         expanded = expand_params(params, context)
         return expanded if isinstance(expanded, dict) else params
@@ -693,7 +756,7 @@ class SchedulerService:
     ) -> LastRun:
         last_run = self._last_run(reason, "ok", active, chosen=chosen)
         update = self._timer_reset(last_run.at)
-        if active.source == "smart_mix":
+        if active.source == "smart_mix" and chosen.label != DISCOVERY_LABEL:
             update["last_mix_index"] = chosen.index
         await self._save(last_run=last_run, **update)
         logger.info("Refresh done (%s, %s rule %s)", reason, active.source, last_run.rule_kind)

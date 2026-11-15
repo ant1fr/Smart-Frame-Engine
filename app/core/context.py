@@ -39,6 +39,7 @@ class RuleContext:
     now: datetime
     tz: ZoneInfo
     hemisphere: Hemisphere = "north"
+    season_override: Season | None = None
 
     @property
     def local(self) -> datetime:
@@ -46,6 +47,8 @@ class RuleContext:
 
     @property
     def season(self) -> Season:
+        if self.season_override is not None:
+            return self.season_override
         season = _NORTH[self.local.month]
         return season if self.hemisphere == "north" else _OPPOSITE[season]
 

@@ -22,7 +22,9 @@ def smart_search(client: TestClient, **body: Any) -> Any:
 def enable_mix(client: TestClient, *entries: dict[str, Any], **extra: Any) -> None:
     response = client.put(
         "/api/config",
-        json={"smart_mix": {"enabled": True, "entries": list(entries), **extra}},
+        json={
+            "smart_mix": {"enabled": True, "discovery_share": 0, "entries": list(entries), **extra}
+        },
     )
     assert response.status_code == 200, response.text
 

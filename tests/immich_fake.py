@@ -162,6 +162,8 @@ class FakeImmich:
                     for a in self.albums
                 ],
             )
+        if path == "/api/search/metadata":
+            return self._metadata(body)
         if path in {"/api/search/random", "/api/search/smart"}:
             return self._search(path, body)
         if path == "/api/faces":
@@ -221,6 +223,22 @@ class FakeImmich:
                 200, json={"albums": {}, "assets": {"items": items, "count": len(items)}}
             )
         return httpx.Response(200, json=pool[: body["size"]])
+
+    def _metadata(self, body: dict[str, Any]) -> httpx.Response:
+        """Paged asset listing (used for album membership); ignores archive/lock filters."""
+        members = {
+            asset_id
+            for album in self.albums
+            if album["id"] in (body.get("albumIds") or [])
+            for asset_id in album["assetIds"]
+        }
+        items = [a for a in self.assets.values() if a["id"] in members]
+        size, page = body["size"], body["page"]
+        chunk = items[(page - 1) * size : page * size]
+        next_page = str(page + 1) if page * size < len(items) else None
+        return httpx.Response(
+            200, json={"assets": {"items": chunk, "count": len(chunk), "nextPage": next_page}}
+        )
 
     def _asset(self, path: str, query: dict[str, str]) -> httpx.Response:
         parts = path.split("/")  # ['', 'api', 'assets', id, (original|thumbnail)?]

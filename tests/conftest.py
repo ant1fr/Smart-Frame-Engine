@@ -22,6 +22,7 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make sure the developer's shell environment never leaks into tests."""
     for name in EnvSettings.model_fields:
         monkeypatch.delenv(name.upper(), raising=False)
+    monkeypatch.setenv("ZEROCONF_ENABLED", "false")  # tests never touch the network
 
 
 _LOCAL_HOSTS = {None, "localhost", "127.0.0.1", "::1", "testserver"}

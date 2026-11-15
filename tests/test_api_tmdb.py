@@ -151,7 +151,10 @@ def test_smart_mix_entries_can_replay_posters(make_client: ClientFactory) -> Non
     mock_amelie()
     client = tmdb_client(make_client)
     entry = {"kind": "tmdb", "params": {"query": "Amélie", "media_type": "movie"}, "label": "Film"}
-    response = client.put("/api/config", json={"smart_mix": {"enabled": True, "entries": [entry]}})
+    response = client.put(
+        "/api/config",
+        json={"smart_mix": {"enabled": True, "discovery_share": 0, "entries": [entry]}},
+    )
     assert response.status_code == 200
     refreshed = client.post("/api/refresh")
     assert refreshed.status_code == 200, refreshed.text

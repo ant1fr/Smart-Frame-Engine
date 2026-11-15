@@ -50,6 +50,8 @@ T = TypeVar("T")
 CONNECT_TIMEOUT_S: Final = 10.0
 READ_TIMEOUT_S: Final = 30.0
 PEOPLE_PAGE_SIZE: Final = 500
+ALBUM_PAGE_SIZE: Final = 1000
+MAX_ALBUM_PAGES: Final = 50
 MAX_PEOPLE_PAGES: Final = 50
 
 _ASSETS: Final = TypeAdapter(list[AssetDto])
@@ -195,6 +197,27 @@ class ImmichClient:
     async def albums(self) -> list[AlbumDto]:
         """Albums the key can see (owned and shared)."""
         return self._parse(_ALBUMS, await self._json("GET", "/api/albums"))
+
+    async def album_asset_ids(self, album_ids: Sequence[str]) -> set[str]:
+        """IDs of every asset in the given albums (``POST /api/search/metadata``, paged).
+
+        Immich 3.x no longer lists an album's assets in ``GET /api/albums/{id}``. Archived
+        assets are included (private albums must be excluded entirely); locked ones never
+        appear in a search unless asked for.
+        """
+        found: set[str] = set()
+        for page in range(1, MAX_ALBUM_PAGES + 1):
+            body = {"albumIds": list(album_ids), "page": page, "size": ALBUM_PAGE_SIZE}
+            data = await self._json("POST", "/api/search/metadata", json=body)
+            assets = data.get("assets", {}) if isinstance(data, dict) else None
+            if not isinstance(assets, dict):
+                raise ImmichResponseError(
+                    f"Immich account {self.name!r} returned a bad search result"
+                )
+            found.update(asset.id for asset in self._parse(_ASSETS, assets.get("items", [])))
+            if not assets.get("nextPage"):
+                break
+        return found
 
     async def search_random(self, filters: SearchFilters, size: int) -> list[AssetDto]:
         """``POST /api/search/random``."""

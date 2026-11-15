@@ -469,6 +469,76 @@ automation:
       - service: rest_command.frame_rain_boost
 ```
 
+## Family Mode, Random Discovery and ambient context
+
+**Locked Folder (always on).** Photos in Immich's Locked Folder are never selected by any
+pipeline (Smart Mix, Random Discovery, smart search, refresh), with Family Mode on or off.
+
+**Family Mode** (`family` settings, Settings → Family Mode) filters every Immich selection
+over the *whole library*, automatically, with no per-photo curation:
+
+| Setting | Effect |
+| --- | --- |
+| `enabled` | Apply the filters (a live `family_mode` in `/api/context` overrides it). |
+| `members` | Recognized people (Immich faces): keep photos showing **at least one** of them. Empty = the whole library. |
+| `require_member` | `false` keeps the members list but only applies the exclusions below. |
+| `private_albums` | Album names or IDs: every photo in them is excluded (membership cached for `immich.people_cache_ttl_s`). |
+| `private_people` | People whose photos are never shown. |
+
+**Random Discovery** (`smart_mix.discovery_share`, 0 to 0.5, default 0.15): each scheduled
+refresh first rolls this share. On a hit it shows a random photo of the whole library
+(ignoring the default persons/album filters) with the quality gate enforced, so
+screenshots, low-resolution shots, documents and blank frames are skipped, and Family Mode
+and the Locked Folder rule applied. If nothing suitable is found, the weighted entries are
+used. Memes have no reliable detector: the screenshot rule (no camera EXIF plus a flat or
+phone-shaped image) catches many but not all.
+
+**Ambient context** (`POST`/`GET`/`DELETE /api/context`, API key): short-lived facts from
+Home Assistant. Every field expires on its own (`ttl_minutes`, default
+`ambient.default_ttl_minutes` = 180) and is stored in `scheduler_state.json`, so it survives
+a restart. A field is either the bare value or `{"value" | "values": ..., "ttl_minutes": n}`;
+an empty list or text clears a field, `DELETE /api/context?field=presence` clears one.
+
+| Field | Effect |
+| --- | --- |
+| `family_mode` (bool) | Forces Family Mode on or off while live. |
+| `presence` (names) | Adds a candidate showing any of these people (weight `ambient.boost_weight`). |
+| `boost_people` (names) | Same, for people to favour. |
+| `boost_tags` (phrases) | Adds a CLIP search candidate (`beach`, `birthday`...). |
+| `weather` (keyword) | Adds the CLIP phrase of `ambient.weather_queries` (`sunny`, `rainy`, `cloudy`, `snowy`, `stormy`, `foggy`, `clear-night`; edit the map to taste). |
+| `season` | Replaces the calendar season in `{season}` placeholders. |
+
+Candidates only matter while the Smart Mix is the active rule. The dashboard shows the live
+context with its expiries. `/api/smart-mix/context` stays available for one-off rule boosts.
+
+```yaml
+rest_command:
+  frame_guests_over:
+    url: http://smart-frame.lan:8080/api/context
+    method: POST
+    content_type: application/json
+    payload: '{"family_mode": {"value": true, "ttl_minutes": 360}}'
+    headers:
+      X-API-Key: !secret smart_frame_api_key
+  frame_context_home:
+    url: http://smart-frame.lan:8080/api/context
+    method: POST
+    content_type: application/json
+    payload: '{"presence": {{ presence | tojson }}, "weather": "{{ weather }}", "ttl_minutes": 120}'
+    headers:
+      X-API-Key: !secret smart_frame_api_key
+```
+
+### Zeroconf / mDNS
+
+With `ZEROCONF_ENABLED=true` (default) the engine advertises `_smartframe._tcp.local.` with
+TXT records `version`, `path` (`ROOT_PATH`, `/` when empty) and `auth` (`open`, `key` or
+`password`). Any error is logged and ignored. Docker's default bridge network drops
+multicast: to be discoverable, run the container with `network_mode: host` (and drop the
+`ports:` mapping; set `PORT` instead). Home Assistant only discovers this service type
+through an integration that declares it, which does not exist yet: add the engine manually
+with its URL.
+
 ## Movie and TV posters (TMDB)
 
 `POST /api/display/tmdb` finds a movie or series on [TMDB](https://www.themoviedb.org)
