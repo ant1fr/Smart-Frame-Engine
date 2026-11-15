@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -192,6 +193,12 @@ class FakeImmich:
             members = {aid for a in self.albums if a["id"] in album_ids for aid in a["assetIds"]}
             if data["id"] not in members:
                 return False
+        taken = datetime.fromisoformat(data["localDateTime"].replace("Z", "+00:00"))
+        after, before = body.get("takenAfter"), body.get("takenBefore")
+        if after and taken < datetime.fromisoformat(after.replace("Z", "+00:00")):
+            return False
+        if before and taken > datetime.fromisoformat(before.replace("Z", "+00:00")):
+            return False
         return not data["isTrashed"]
 
     def _search(self, path: str, body: dict[str, Any]) -> httpx.Response:

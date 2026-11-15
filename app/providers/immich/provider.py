@@ -12,11 +12,12 @@ import io
 import itertools
 import logging
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import PurePath
 from typing import Final
+from zoneinfo import ZoneInfo
 
 from PIL import Image
 from pydantic import JsonValue
@@ -35,6 +36,7 @@ from app.providers.base import (
     ProviderUnavailableError,
 )
 from app.providers.immich.client import ImmichClient, ImmichGateway, ImmichResponseError
+from app.providers.immich.dates import DateWindow, on_this_day_windows
 from app.providers.immich.faces import face_regions
 from app.providers.immich.models import (
     AlbumInfo,
@@ -49,6 +51,7 @@ logger = logging.getLogger(__name__)
 SOURCE: Final = "immich"
 MAX_QUERIES_PER_ACCOUNT: Final = 10
 MAX_PERSON_COMBINATIONS: Final = 8
+MAX_DATED_QUERIES: Final = 30
 MAX_TITLE_PEOPLE: Final = 4
 THUMBNAIL_MAX_BYTES: Final = 2 * 1024 * 1024
 
@@ -70,6 +73,7 @@ class _Plan:
     exclude_archived: bool
     queries: tuple[str, ...]
     size: int
+    windows: tuple[DateWindow | None, ...] = (None,)
 
 
 @dataclass(slots=True)
@@ -173,6 +177,7 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         *,
         max_bytes: int,
         rng: random.Random | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._config_store = config_store
         self._gateway = gateway
@@ -180,6 +185,7 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         self._history = history
         self._max_bytes = max_bytes
         self._rng = rng or random.Random()  # noqa: S311 - not security relevant
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     # --- public API ----------------------------------------------------------------------
     async def fetch(self, request: ImmichDisplayRequest) -> ImageAsset:
@@ -253,8 +259,7 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         return found, errors
 
     # --- planning ------------------------------------------------------------------------
-    @staticmethod
-    def _plan(request: ImmichDisplayRequest, config: ImmichConfig) -> _Plan:
+    def _plan(self, request: ImmichDisplayRequest, config: ImmichConfig) -> _Plan:
         persons = config.persons if request.persons is None else request.persons
         always = config.always_include if request.always_include is None else request.always_include
         album_id = (request.album_id or "").strip()
@@ -272,7 +277,17 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
             exclude_archived=config.exclude_archived,
             queries=tuple(request.clip_queries) if request.mode == "search" else (),
             size=config.search_candidates,
+            windows=self._windows(request),
         )
+
+    def _windows(self, request: ImmichDisplayRequest) -> tuple[DateWindow | None, ...]:
+        """Date windows to query: one explicit range, one per past year, or no restriction."""
+        if request.on_this_day is not None:
+            tz = ZoneInfo(self._config_store.config.scheduler.timezone)
+            return tuple(on_this_day_windows(self._clock(), tz, request.on_this_day))
+        if request.taken_after is not None or request.taken_before is not None:
+            return ((request.taken_after, request.taken_before),)
+        return (None,)
 
     # --- candidate gathering ---------------------------------------------------------------
     async def _gather(self, account: str, plan: _Plan, config: ImmichConfig) -> _AccountResult:
@@ -301,8 +316,16 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
                 return result
             seen: set[str] = set()
             queries = plan.queries or ("",)
-            for query, combo in itertools.product(queries, combos):
-                filters = SearchFilters(combo, album_ids, plan.favorites, plan.exclude_archived)
+            plan_queries = itertools.product(queries, combos, plan.windows)
+            for query, combo, window in itertools.islice(plan_queries, MAX_DATED_QUERIES):
+                filters = SearchFilters(
+                    combo,
+                    album_ids,
+                    plan.favorites,
+                    plan.exclude_archived,
+                    taken_after=window[0] if window else None,
+                    taken_before=window[1] if window else None,
+                )
                 found = (
                     await client.search_smart(query, filters, plan.size)
                     if query

@@ -24,7 +24,11 @@ class RefreshResult(BaseModel):
     reason: Literal["manual"] = "manual"
     rule_kind: str = Field(description="Source of the replayed rule (immich, media, url)")
     rule_source: RuleSource = Field(
-        description="pinned = scheduler.source_rule; last = the last manual display request"
+        description="pinned = scheduler.source_rule; smart_mix = the weighted playlist; "
+        "last = the last manual display request"
+    )
+    entry_label: str | None = Field(
+        default=None, description="Smart Mix entry that was shown (smart_mix only)"
     )
     display: DisplayResult
 
@@ -66,7 +70,8 @@ async def refresh(scheduler: SchedulerDep) -> RefreshResult:
             status_code=502, detail="The source returned an image that cannot be decoded"
         ) from exc
     return RefreshResult(
-        rule_kind=outcome.active.rule.kind,
+        rule_kind=outcome.rule.kind,
         rule_source=outcome.active.source,
+        entry_label=outcome.entry_label,
         display=outcome.display,
     )

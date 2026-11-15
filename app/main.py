@@ -25,6 +25,7 @@ from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
 from app.api.routes import immich as immich_routes
 from app.api.routes import refresh as refresh_routes
+from app.api.routes import smart_mix as smart_mix_routes
 from app.api.routes import system as system_routes
 from app.core.auth import APIKeyMiddleware
 from app.core.config_models import RuntimeConfig
@@ -194,6 +195,8 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(immich_routes.display_router)
     app.include_router(immich_routes.router)
     app.include_router(refresh_routes.router)
+    app.include_router(smart_mix_routes.display_router)
+    app.include_router(smart_mix_routes.router)
     app.include_router(fraimic_routes.router)
 
     @app.get("/", include_in_schema=False)

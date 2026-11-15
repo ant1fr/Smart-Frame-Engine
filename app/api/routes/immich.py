@@ -21,8 +21,9 @@ from app.core.security import InvalidImageError
 from app.providers.base import InvalidSelectionError, ProviderError
 from app.providers.immich.models import AlbumInfo, ImmichDisplayRequest
 from app.providers.immich.people import PeopleSnapshot, resolve_person
-from app.services.display import DisplayResult
-from app.services.scheduler import immich_rule
+from app.providers.immich.provider import ImmichProvider
+from app.services.display import DisplayResult, DisplayService
+from app.services.scheduler import SchedulerService, immich_rule
 
 display_router = APIRouter(
     prefix="/api/display", tags=["display"], dependencies=[Security(api_key_scheme)]
@@ -58,7 +59,19 @@ async def display_immich(
     The photo is recorded in the history so it is not shown again within
     ``immich.anti_repeat_days``. When pushed to the frame, the request becomes the rule
     replayed by ``POST /api/refresh`` and the scheduler, and the refresh timer restarts.
+    With ``ephemeral`` the request is not stored as that rule; ``hold_minutes`` keeps the
+    image up for at least that long. A direct push never changes the Smart Mix playlist.
     """
+    return await show_immich(request, provider, display, scheduler)
+
+
+async def show_immich(
+    request: ImmichDisplayRequest,
+    provider: ImmichProvider,
+    display: DisplayService,
+    scheduler: SchedulerService,
+) -> DisplayResult:
+    """Fetch, render and (when pushed) record one Immich display request."""
     try:
         asset = await provider.fetch(request)
     except ProviderError as exc:
@@ -70,7 +83,9 @@ async def display_immich(
             status_code=502, detail="Immich returned an image that cannot be decoded"
         ) from exc
     if request.push_to_fraimic:
-        await scheduler.record_manual(immich_rule(request))
+        await scheduler.record_manual(
+            immich_rule(request), ephemeral=request.ephemeral, hold_minutes=request.hold_minutes
+        )
     return result
 
 

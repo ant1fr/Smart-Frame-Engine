@@ -356,7 +356,7 @@ async def test_state_survives_a_restart(harness: HarnessFactory) -> None:
 
 
 @pytest.mark.parametrize(
-    "content", ['{"consecutive_failures": -3}', '{"last_rule": {"kind": "ftp"}}', "[1, 2]"]
+    "content", ['{"consecutive_failures": -3}', '{"last_rule": {"kind": "Not A Kind"}}', "[1, 2]"]
 )
 async def test_malformed_state_is_ignored(
     harness: HarnessFactory, content: str, caplog: pytest.LogCaptureFixture

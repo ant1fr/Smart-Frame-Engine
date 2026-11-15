@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -21,6 +21,7 @@ from pydantic import (
     Field,
     JsonValue,
     SecretStr,
+    StringConstraints,
     field_validator,
     model_validator,
 )
@@ -387,6 +388,14 @@ class QualityConfig(_Section):
     )
 
 
+SourceKind = Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$")]
+"""Open identifier of a source (``immich``, ``tmdb``...).
+
+Which kinds exist is decided at runtime by the scheduler's runner registry, not here, so
+adding a provider never changes the configuration models.
+"""
+
+
 class SourceRule(BaseModel):
     """A replayable source request (``/api/refresh`` and the scheduler).
 
@@ -396,8 +405,53 @@ class SourceRule(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["immich", "media", "url"]
+    kind: SourceKind
     params: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class SmartMixEntry(BaseModel):
+    """One weighted entry of the Smart Mix playlist: a :class:`SourceRule` plus a weight.
+
+    ``params`` may contain context placeholders (``{season}``, ``{month_name}``...) that are
+    expanded each time the entry runs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SourceKind
+    params: dict[str, JsonValue] = Field(default_factory=dict)
+    weight: float = Field(default=1.0, gt=0, le=1000, description="Relative chance of being picked")
+    label: str | None = Field(default=None, max_length=80, description="Name shown in the UI")
+    enabled: bool = Field(default=True, description="Disabled entries are never picked")
+
+    def to_rule(self) -> SourceRule:
+        """The replayable rule this entry wraps."""
+        return SourceRule(kind=self.kind, params=dict(self.params))
+
+
+class SmartMixConfig(_Section):
+    """Weighted, source-agnostic playlist used by scheduled refreshes."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Pick the next scheduled photo from the entries (a pinned "
+        "scheduler.source_rule still wins)",
+    )
+    entries: list[SmartMixEntry] = Field(
+        default_factory=list, max_length=50, description="Weighted playlist entries"
+    )
+    max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Entries tried per refresh when one has no candidate or fails",
+    )
+    avoid_consecutive: bool = Field(
+        default=True, description="Do not pick the same entry twice in a row when others exist"
+    )
+    hemisphere: Literal["north", "south"] = Field(
+        default="north", description="Used to map months to {season}"
+    )
 
 
 class SchedulerConfig(_Section):
@@ -474,6 +528,7 @@ class RuntimeConfig(BaseModel):
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     eink: EinkConfig = Field(default_factory=EinkConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    smart_mix: SmartMixConfig = Field(default_factory=SmartMixConfig)
     quality: QualityConfig = Field(default_factory=QualityConfig)
 
     @property

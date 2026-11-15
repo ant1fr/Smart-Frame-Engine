@@ -29,7 +29,7 @@ API_KEY_HEADER: Final = "X-API-Key"
 API_KEY_QUERY_PARAM: Final = "api_key"
 
 MUTATING_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-PROTECTED_PREFIXES: Final = ("/api/config", "/api/immich")
+PROTECTED_PREFIXES: Final = ("/api/config", "/api/immich", "/api/smart-mix")
 IMAGE_ENDPOINTS: Final = frozenset(
     {"/api/current.jpg", "/api/current.bin", "/api/current_dithered.png"}
 )

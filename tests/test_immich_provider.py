@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import random
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -561,3 +562,60 @@ def test_raw_detection() -> None:
     assert not is_raw(AssetDto(id="a", originalFileName="x.jpg", originalMimeType="image/jpeg"))
     assert not is_raw(AssetDto(id="a", originalMimeType="image/x-ms-bmp"))
     assert not is_raw(AssetDto(id="a", originalFileName="x.heic", originalMimeType="image/heic"))
+
+
+# --- date filters and "on this day" --------------------------------------------
+def dated(fake: FakeImmich) -> FakeImmich:
+    fake.add_asset("old", localDateTime="2021-11-15T09:00:00.000Z")
+    fake.add_asset("edge", localDateTime="2022-11-17T20:00:00.000Z")
+    fake.add_asset("far", localDateTime="2022-11-25T09:00:00.000Z")
+    fake.add_asset("now", localDateTime="2026-11-15T09:00:00.000Z")
+    return fake
+
+
+async def test_taken_after_and_before_filter_the_search(tmp_path: Path) -> None:
+    fake = dated(FakeImmich())
+    env = Env(tmp_path, {"home": fake})
+    with mocked(fake):
+        asset = await env.fetch(
+            taken_after="2022-01-01T00:00:00Z", taken_before="2022-12-31T00:00:00Z"
+        )
+
+    assert asset.details["asset_id"] in {"edge", "far"}
+    body = bodies(fake)[0]
+    assert body["takenAfter"] == "2022-01-01T00:00:00.000Z"
+    assert body["takenBefore"] == "2022-12-31T00:00:00.000Z"
+
+
+async def test_on_this_day_queries_one_window_per_past_year(tmp_path: Path) -> None:
+    fake = dated(FakeImmich())
+    clock = lambda: datetime(2026, 11, 15, 12, 0, tzinfo=UTC)  # noqa: E731
+    env = Env(tmp_path, {"home": fake})
+    env.provider._clock = clock
+    with mocked(fake):
+        asset = await env.fetch(on_this_day={"window_days": 3, "years_back": 5})
+
+    # 2021 and 2022 hold matches; 2026 (this year) is excluded; 'far' is outside the window.
+    assert asset.details["asset_id"] in {"old", "edge"}
+    sent = bodies(fake)
+    assert len(sent) == 5
+    assert sent[0]["takenAfter"] == "2025-11-12T00:00:00.000Z"
+    assert sent[0]["takenBefore"] == "2025-11-18T23:59:59.999Z"
+
+
+async def test_on_this_day_without_matches_raises_no_candidate(tmp_path: Path) -> None:
+    fake = FakeImmich()
+    fake.add_asset("a1", localDateTime="2024-03-01T09:00:00.000Z")
+    env = Env(tmp_path, {"home": fake})
+    env.provider._clock = lambda: datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    with mocked(fake), pytest.raises(NoCandidateError):
+        await env.fetch(on_this_day={})
+
+
+def test_on_this_day_rejects_explicit_dates() -> None:
+    with pytest.raises(ValueError, match="on_this_day"):
+        ImmichDisplayRequest(on_this_day={}, taken_after="2022-01-01T00:00:00Z")
+    with pytest.raises(ValueError, match="earlier"):
+        ImmichDisplayRequest(
+            taken_after="2022-02-01T00:00:00Z", taken_before="2022-01-01T00:00:00Z"
+        )
