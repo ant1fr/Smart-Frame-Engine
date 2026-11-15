@@ -39,10 +39,12 @@ def test_auth_applies_under_prefixed_paths(make_client: ClientFactory) -> None:
     assert client.get("/fraimic/api/health").status_code == 200
 
 
-def test_index_redirect_honors_root_path(make_client: ClientFactory) -> None:
+def test_index_is_served_under_root_path(make_client: ClientFactory) -> None:
     client = make_client(root_path="/fraimic")
-    response = client.get("/", follow_redirects=False)
-    assert response.headers["location"] == "/fraimic/docs"
+    for path in ("/", "/fraimic/"):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 200
+        assert "./api/" in response.text and 'fetch("/' not in response.text
 
 
 def test_runner_trusts_forwarded_headers(monkeypatch: pytest.MonkeyPatch) -> None:

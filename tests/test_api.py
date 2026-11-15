@@ -112,10 +112,10 @@ def test_openapi_documents_api_key_scheme(make_client: ClientFactory) -> None:
     assert spec["paths"]["/api/config"]["put"]["security"] == [{"APIKeyHeader": []}]
 
 
-def test_index_redirects_to_docs(make_client: ClientFactory) -> None:
+def test_index_serves_the_web_ui(make_client: ClientFactory) -> None:
     response = make_client().get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/docs"
+    assert response.status_code == 200
+    assert "<title>Smart Frame</title>" in response.text
 
 
 def test_config_api_masks_immich_account_keys(make_client: ClientFactory) -> None:

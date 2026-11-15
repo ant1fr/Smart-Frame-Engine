@@ -9,9 +9,11 @@ from fastapi import Depends, Request
 from app.core.auth import AuthState
 from app.core.config_store import ConfigStore
 from app.core.history_store import HistoryStore
+from app.core.security import URLPolicy
 from app.core.settings import EnvSettings
-from app.providers.immich import ImmichProvider, PeopleDirectory
-from app.providers.tmdb import PosterResolver
+from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
+from app.providers.tmdb import PosterResolver, TmdbProvider
+from app.services.activity import ActivityLog
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
@@ -80,6 +82,26 @@ def get_now_playing_service(request: Request) -> NowPlayingService:
     return cast(NowPlayingService, request.app.state.now_playing_service)
 
 
+def get_immich_gateway(request: Request) -> ImmichGateway:
+    """Opens validated clients for the configured Immich accounts."""
+    return cast(ImmichGateway, request.app.state.immich_gateway)
+
+
+def get_url_policy(request: Request) -> URLPolicy:
+    """Outbound URL policy (BLOCK_PRIVATE_URLS / URL_ALLOWLIST)."""
+    return cast(URLPolicy, request.app.state.url_policy)
+
+
+def get_tmdb_provider(request: Request) -> TmdbProvider:
+    """The TMDB poster provider (search and key checks)."""
+    return cast(TmdbProvider, request.app.state.tmdb_provider)
+
+
+def get_activity_log(request: Request) -> ActivityLog:
+    """Recent renders and log lines."""
+    return cast(ActivityLog, request.app.state.activity_log)
+
+
 def get_people_directory(request: Request) -> PeopleDirectory:
     """Cache of the people known to each Immich account."""
     return cast(PeopleDirectory, request.app.state.people_directory)
@@ -94,7 +116,11 @@ DeliveryServiceDep = Annotated[DeliveryService, Depends(get_delivery_service)]
 DisplayServiceDep = Annotated[DisplayService, Depends(get_display_service)]
 ImmichProviderDep = Annotated[ImmichProvider, Depends(get_immich_provider)]
 PeopleDirectoryDep = Annotated[PeopleDirectory, Depends(get_people_directory)]
+ImmichGatewayDep = Annotated[ImmichGateway, Depends(get_immich_gateway)]
+URLPolicyDep = Annotated[URLPolicy, Depends(get_url_policy)]
 SchedulerDep = Annotated[SchedulerService, Depends(get_scheduler_service)]
 EphemeralServiceDep = Annotated[EphemeralService, Depends(get_ephemeral_service)]
 PosterResolverDep = Annotated[PosterResolver, Depends(get_poster_resolver)]
+TmdbProviderDep = Annotated[TmdbProvider, Depends(get_tmdb_provider)]
+ActivityLogDep = Annotated[ActivityLog, Depends(get_activity_log)]
 NowPlayingServiceDep = Annotated[NowPlayingService, Depends(get_now_playing_service)]

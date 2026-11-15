@@ -92,6 +92,15 @@ class TmdbClient:
             raise ProviderUnavailableError("TMDB returned an unexpected payload")
         return payload
 
+    async def check(self) -> None:
+        """Validate the key with a cheap request (``GET /configuration``).
+
+        Raises:
+            ProviderUnavailableError: Unreachable, rejected key or unexpected answer.
+        """
+        if await self._get("/configuration", {}) is None:
+            raise ProviderUnavailableError("TMDB answered HTTP 404")
+
     async def search(
         self, query: str, media_type: TmdbMediaType, *, year: int | None, language: str
     ) -> list[SearchResult]:

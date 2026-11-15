@@ -31,6 +31,7 @@ class AlbumDto(_Dto):
     albumName: str = ""
     assetCount: int = 0
     shared: bool = False
+    albumThumbnailAssetId: str | None = None
 
 
 class ExifDto(_Dto):
@@ -116,6 +117,7 @@ class AlbumInfo(BaseModel):
     name: str
     asset_count: int
     shared: bool
+    thumbnail_asset_id: str | None = None
 
 
 class OnThisDay(BaseModel):

@@ -187,7 +187,14 @@ def test_albums_endpoint(make_client: ClientFactory) -> None:
     with servers(fake, frame=False):
         body = client.get("/api/immich/albums").json()
     assert body["albums"] == [
-        {"account": "default", "id": "al1", "name": "Summer", "asset_count": 2, "shared": False}
+        {
+            "account": "default",
+            "id": "al1",
+            "name": "Summer",
+            "asset_count": 2,
+            "shared": False,
+            "thumbnail_asset_id": body["albums"][0]["thumbnail_asset_id"],
+        }
     ]
     assert body["errors"] == {}
 
