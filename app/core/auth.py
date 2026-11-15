@@ -47,7 +47,15 @@ CSRF_VALUE: Final = "SmartFrame"
 ADMIN_USER: Final = "admin"
 
 MUTATING_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-PROTECTED_PREFIXES: Final = ("/api/config", "/api/immich", "/api/smart-mix", "/api/auth/api-key")
+PROTECTED_PREFIXES: Final = (
+    "/api/config",
+    "/api/immich",
+    "/api/smart-mix",
+    "/api/auth/api-key",
+    "/api/tmdb",
+    "/api/activity",
+    "/api/playground",
+)
 IMAGE_ENDPOINTS: Final = frozenset(
     {
         "/api/current.jpg",

@@ -37,7 +37,7 @@ from app.providers.base import (
     ProviderUnavailableError,
 )
 from app.providers.tmdb.client import TmdbClient, image_url
-from app.providers.tmdb.models import SearchResult, TmdbImage, TmdbRequest
+from app.providers.tmdb.models import SearchResult, TmdbImage, TmdbMediaType, TmdbRequest
 from app.providers.tmdb.ranking import (
     choose_image_size,
     parse_language,
@@ -85,6 +85,44 @@ class TmdbProvider(BaseImageProvider[TmdbRequest]):
         """Whether a TMDB key is set."""
         return bool(self._config_store.config.tmdb.api_key.get_secret_value().strip())
 
+    def _api_key(self) -> str:
+        api_key = self._config_store.config.tmdb.api_key.get_secret_value().strip()
+        if not api_key:
+            raise ProviderNotConfiguredError(
+                "TMDB is not configured: set TMDB_API_KEY or tmdb.api_key"
+            )
+        return api_key
+
+    async def search(
+        self,
+        query: str,
+        media_type: TmdbMediaType = "multi",
+        *,
+        year: int | None = None,
+        language: str | None = None,
+    ) -> list[SearchResult]:
+        """Movies and series matching ``query`` (for pickers; nothing is downloaded).
+
+        Raises:
+            ProviderNotConfiguredError: No TMDB key.
+            ProviderUnavailableError: TMDB failed or rejected the key.
+        """
+        api_key = self._api_key()
+        language = language or self._config_store.config.tmdb.language
+        async with self._client_factory(api_key) as client:
+            return await client.search(query, media_type, year=year, language=language)
+
+    async def check_key(self, api_key: str | None = None) -> None:
+        """Check ``api_key`` (default: the configured one) against TMDB.
+
+        Raises:
+            ProviderNotConfiguredError: No key given or configured.
+            ProviderUnavailableError: TMDB is unreachable or rejected the key.
+        """
+        key = (api_key or "").strip() or self._api_key()
+        async with self._client_factory(key) as client:
+            await client.check()
+
     async def fetch(self, request: TmdbRequest) -> ImageAsset:
         """Find the title and download its best poster.
 
@@ -94,11 +132,7 @@ class TmdbProvider(BaseImageProvider[TmdbRequest]):
             ProviderUnavailableError: TMDB or its image CDN failed.
         """
         config = self._config_store.config.tmdb
-        api_key = config.api_key.get_secret_value().strip()
-        if not api_key:
-            raise ProviderNotConfiguredError(
-                "TMDB is not configured: set TMDB_API_KEY or tmdb.api_key"
-            )
+        api_key = self._api_key()
         language = request.language or config.language
         lang, region = parse_language(language)
         include = ",".join(dict.fromkeys([lang, "en", "null"]))

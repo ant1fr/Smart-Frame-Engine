@@ -16,9 +16,10 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app import __version__
+from app.api.routes import activity as activity_routes
 from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
 from app.api.routes import display as display_routes
@@ -26,6 +27,7 @@ from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
 from app.api.routes import immich as immich_routes
 from app.api.routes import now_playing as now_playing_routes
+from app.api.routes import playground as playground_routes
 from app.api.routes import queue as queue_routes
 from app.api.routes import refresh as refresh_routes
 from app.api.routes import smart_mix as smart_mix_routes
@@ -45,6 +47,7 @@ from app.core.settings import EnvSettings, get_env_settings
 from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
 from app.providers.music import ArtworkResolver
 from app.providers.tmdb import PosterResolver, TmdbProvider
+from app.services.activity import ActivityLog
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
@@ -88,6 +91,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         settings: Environment settings; defaults to :func:`get_env_settings`.
     """
     settings = settings or get_env_settings()
+    activity = ActivityLog()
     auth_state = AuthState(
         SecretsStore(
             settings.secrets_path,
@@ -101,6 +105,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         setup_logging(settings.log_level)
+        activity.attach()
         _prepare_data_dir(settings)
         auth_state.load()
 
@@ -133,6 +138,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         )
         delivery.load()
         display = DisplayService(config_store, current_store, delivery, history_store)
+        display.add_listener(activity.record_render)
         url_policy = URLPolicy.from_entries(
             settings.block_private_urls, settings.url_allowlist_entries
         )
@@ -176,11 +182,15 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         app.state.delivery_service = delivery
         app.state.display_service = display
         app.state.people_directory = people
+        app.state.immich_gateway = immich_gateway
+        app.state.url_policy = url_policy
         app.state.immich_provider = immich
         app.state.scheduler_service = scheduler
         app.state.ephemeral_service = ephemeral
         app.state.image_fetcher = image_fetcher
         app.state.poster_resolver = poster_resolver
+        app.state.tmdb_provider = tmdb
+        app.state.activity_log = activity
         app.state.now_playing_service = now_playing
 
         await ephemeral.start()  # before the delivery worker can drop an expired image
@@ -208,6 +218,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             await artwork.aclose()
             await image_fetcher.aclose()
             logger.info("Smart Frame Engine stopped")
+            activity.detach()
 
     app = FastAPI(
         title="Smart Frame Engine",
@@ -265,11 +276,13 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(smart_mix_routes.router)
     app.include_router(fraimic_routes.router)
     app.include_router(queue_routes.router)
+    app.include_router(tmdb_routes.router)
+    app.include_router(playground_routes.router)
+    app.include_router(activity_routes.router)
 
     @app.get("/", include_in_schema=False)
-    async def index(request: Request) -> RedirectResponse:
-        """Redirect to the API docs (the web UI replaces this in a later milestone)."""
-        root_path: str = request.scope.get("root_path", "")
-        return RedirectResponse(url=f"{root_path}/docs", status_code=307)
+    async def index() -> HTMLResponse:
+        """The web UI (relative URLs: works under any reverse-proxy sub-path)."""
+        return HTMLResponse(auth_routes.page("index.html"), headers={"Cache-Control": "no-store"})
 
     return app

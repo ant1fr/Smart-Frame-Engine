@@ -78,6 +78,7 @@ class FakeImmich:
         self.base = base
         self.key = key
         self.people: list[dict[str, Any]] = []
+        self.person_thumbnails: dict[str, bytes] = {}
         self.albums: list[dict[str, Any]] = []  # each: {"id", "albumName", "assetIds": [...]}
         self.assets: dict[str, dict[str, Any]] = {}
         self.faces: dict[str, list[dict[str, Any]]] = {}
@@ -142,6 +143,11 @@ class FakeImmich:
             return httpx.Response(401, json={"message": "Invalid API key"})
         if path == "/api/people":
             return self._people(query)
+        if path.startswith("/api/people/") and path.endswith("/thumbnail"):
+            person_id = path.split("/")[3]
+            if person_id in self.person_thumbnails:
+                return httpx.Response(200, content=self.person_thumbnails[person_id])
+            return httpx.Response(404)
         if path == "/api/albums":
             return httpx.Response(
                 200,
@@ -151,6 +157,7 @@ class FakeImmich:
                         "albumName": a["albumName"],
                         "assetCount": len(a["assetIds"]),
                         "shared": False,
+                        "albumThumbnailAssetId": a["assetIds"][0] if a["assetIds"] else None,
                     }
                     for a in self.albums
                 ],

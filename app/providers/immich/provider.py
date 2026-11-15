@@ -251,6 +251,7 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
                                 name=album.albumName,
                                 asset_count=album.assetCount,
                                 shared=album.shared,
+                                thumbnail_asset_id=album.albumThumbnailAssetId,
                             )
                         )
             except ProviderUnavailableError as exc:

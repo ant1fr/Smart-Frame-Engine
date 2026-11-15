@@ -2,23 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
+import re
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Final, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Security
-from pydantic import BaseModel, Field
+from fastapi.responses import Response
+from pydantic import BaseModel, Field, SecretStr, ValidationError
 
 from app.api.deps import (
     ConfigStoreDep,
     DisplayServiceDep,
+    ImmichGatewayDep,
     ImmichProviderDep,
     PeopleDirectoryDep,
     SchedulerDep,
+    URLPolicyDep,
 )
 from app.api.errors import PROVIDER_ERROR_RESPONSES, provider_http_error
 from app.core.auth import api_key_scheme
-from app.core.security import InvalidImageError
+from app.core.config_models import ImmichAccountConfig, is_masked
+from app.core.security import InvalidImageError, UnsafeURLError, validate_external_url
 from app.providers.base import InvalidSelectionError, ProviderError
+from app.providers.immich.client import ImmichClient
 from app.providers.immich.models import AlbumInfo, ImmichDisplayRequest
 from app.providers.immich.people import PeopleSnapshot, resolve_person
 from app.providers.immich.provider import ImmichProvider
@@ -199,3 +206,102 @@ async def refresh_people(
 ) -> PeopleResponse:
     """Bypass the cache and fetch the people lists again."""
     return await _people_response(directory, config, accounts, refresh=True)
+
+
+# --- UI helpers: thumbnails and connection test ----------------------------------------------
+_ITEM_ID: Final = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+THUMBNAIL_MAX_BYTES: Final = 2 * 1024 * 1024
+
+
+def _image_type(data: bytes) -> str:
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "application/octet-stream"
+
+
+@router.get(
+    "/thumbnail/{account}/{kind}/{item_id}",
+    responses={**_ERRORS, 200: {"content": {"image/jpeg": {}, "image/webp": {}}}},
+    summary="Small thumbnail of an asset (album cover) or a person (face)",
+)
+async def thumbnail(
+    account: str,
+    kind: Literal["asset", "person"],
+    item_id: str,
+    gateway: ImmichGatewayDep,
+) -> Response:
+    """Proxy an Immich thumbnail with the account key, so the browser never sees Immich keys."""
+    if not _ITEM_ID.match(item_id):
+        raise HTTPException(status_code=422, detail="Invalid id")
+    try:
+        async with gateway.client(account) as client:
+            if kind == "asset":
+                data = await client.download(
+                    item_id, variant="thumbnail", max_bytes=THUMBNAIL_MAX_BYTES
+                )
+            else:
+                data = await client.person_thumbnail(item_id, max_bytes=THUMBNAIL_MAX_BYTES)
+    except ProviderError as exc:
+        status = getattr(exc, "status_code", None)
+        if status == 404:
+            raise HTTPException(status_code=404, detail="No thumbnail") from exc
+        raise provider_http_error(exc) from exc
+    return Response(
+        data, media_type=_image_type(data), headers={"Cache-Control": "private, max-age=86400"}
+    )
+
+
+class ConnectionTestRequest(BaseModel):
+    """Test a configured account, or unsaved settings typed in the UI."""
+
+    account: str | None = Field(default=None, description="A configured account name")
+    url: str | None = Field(default=None, description="Unsaved Immich URL")
+    api_key: str | None = Field(
+        default=None, description="Unsaved API key (a masked value means the stored one)"
+    )
+
+
+class ConnectionTestResult(BaseModel):
+    """Outcome of an Immich connection test."""
+
+    ok: bool
+    version: str | None = None
+    people: int | None = None
+    albums: int | None = None
+    error: str | None = None
+
+
+@router.post(
+    "/test",
+    response_model=ConnectionTestResult,
+    summary="Test an Immich connection (saved or unsaved settings)",
+)
+async def test_connection(
+    body: ConnectionTestRequest, config: ConfigStoreDep, policy: URLPolicyDep
+) -> ConnectionTestResult:
+    """Check reachability, the API key and what the key can see (people and albums)."""
+    stored = config.config.immich.accounts.get(body.account) if body.account else None
+    url = body.url or (stored.url if stored else None)
+    key = body.api_key
+    if (key is None or is_masked(key)) and stored is not None:
+        key = stored.api_key.get_secret_value()
+    if not url or not key:
+        return ConnectionTestResult(ok=False, error="Give a URL and an API key")
+    try:
+        account = ImmichAccountConfig(url=url, api_key=SecretStr(key))
+        await validate_external_url(account.url, policy)
+    except (ValidationError, UnsafeURLError) as exc:
+        detail = exc.errors()[0]["msg"] if isinstance(exc, ValidationError) else str(exc)
+        return ConnectionTestResult(ok=False, error=detail)
+    name = body.account or "test"
+    try:
+        async with ImmichClient(name, account) as client:
+            version = await client.version()
+            people, albums = await asyncio.gather(client.people(), client.albums())
+    except ProviderError as exc:
+        return ConnectionTestResult(ok=False, error=str(exc))
+    return ConnectionTestResult(ok=True, version=version, people=len(people), albums=len(albums))

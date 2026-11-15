@@ -219,6 +219,33 @@ class ImmichClient:
         """Detected faces of an asset (``GET /api/faces?id=``), with their person."""
         return self._parse(_FACES, await self._json("GET", "/api/faces", params={"id": asset_id}))
 
+    async def person_thumbnail(self, person_id: str, *, max_bytes: int) -> bytes:
+        """The face thumbnail of a person (``GET /api/people/{id}/thumbnail``).
+
+        Raises:
+            ImmichResponseError: Error status (``status_code`` set) or oversized body.
+        """
+        return await self._bytes(f"/api/people/{person_id}/thumbnail", {}, max_bytes)
+
+    async def _bytes(self, path: str, params: dict[str, str | bool], max_bytes: int) -> bytes:
+        try:
+            async with self._http.stream(
+                "GET", path, params=params, headers={"Accept": "*/*"}
+            ) as response:
+                self._check(response)
+                declared = response.headers.get("content-length")
+                return await read_limited(
+                    response.aiter_bytes(),
+                    max_bytes,
+                    declared_length=int(declared) if declared and declared.isdigit() else None,
+                )
+        except PayloadTooLargeError:
+            raise ImmichResponseError(
+                f"Immich asset exceeds the {max_bytes // (1024 * 1024)} MB limit", 413
+            ) from None
+        except httpx.HTTPError as exc:
+            raise self._fail(exc) from None
+
     async def download(
         self,
         asset_id: str,
@@ -247,23 +274,7 @@ class ImmichClient:
         else:
             path = f"/api/assets/{asset_id}/thumbnail"
             params["size"] = variant
-        try:
-            async with self._http.stream(
-                "GET", path, params=params, headers={"Accept": "*/*"}
-            ) as response:
-                self._check(response)
-                declared = response.headers.get("content-length")
-                return await read_limited(
-                    response.aiter_bytes(),
-                    max_bytes,
-                    declared_length=int(declared) if declared and declared.isdigit() else None,
-                )
-        except PayloadTooLargeError:
-            raise ImmichResponseError(
-                f"Immich asset exceeds the {max_bytes // (1024 * 1024)} MB limit", 413
-            ) from None
-        except httpx.HTTPError as exc:
-            raise self._fail(exc) from None
+        return await self._bytes(path, params, max_bytes)
 
 
 class ImmichGateway:

@@ -17,6 +17,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypeVar
 
 from pydantic import BaseModel, Field, JsonValue
 
@@ -38,6 +39,7 @@ from app.services.delivery import DeliveryOutcome, DeliveryService
 logger = logging.getLogger(__name__)
 
 DisplayListener = Callable[[CurrentImageMeta], None]
+_T = TypeVar("_T")
 
 
 class NoCurrentImageError(LookupError):
@@ -224,6 +226,15 @@ class DisplayService:
             )
             self._notify(stored)
         return DisplayResult(image=stored, delivery=delivery)
+
+    async def render_detached(self, job: Callable[[], _T]) -> _T:
+        """Run a rendering ``job`` in a worker thread, serialized with every display.
+
+        Nothing is stored or delivered: used by the render playground, which must not
+        compete with real displays for memory and CPU.
+        """
+        async with self._render_lock:
+            return await asyncio.to_thread(job)
 
     # --- Ephemeral support ----------------------------------------------------------------
     async def extend_expiry(

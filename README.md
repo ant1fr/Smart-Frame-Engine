@@ -7,8 +7,7 @@ friendly, runs standalone in Docker.
 
 > **Status:** early development (`v0.x`). The core service, the eInk pipeline, frame
 > delivery (continuous and deep-sleep), the Immich provider, TMDB posters, now-playing
-> album covers, ephemeral images and the autonomous scheduler are in place; the web UI is
-> being added milestone by milestone.
+> album covers, ephemeral images, the autonomous scheduler and the web UI are in place.
 
 ## Quickstart
 
@@ -18,15 +17,50 @@ mkdir -p data               # must be writable by PUID:PGID (default 1000:1000)
 docker compose up -d
 ```
 
+- Web UI: `http://<host>:8080/`
 - API docs: `http://<host>:8080/docs`
 - Health: `http://<host>:8080/api/health`
+
+## Web UI
+
+A single page served at `/` (Tailwind CSS and Alpine.js from a CDN, no build step). It
+follows the system light/dark theme (toggle in the header), works on phones, and only
+uses relative URLs, so it runs unchanged behind a reverse proxy on a domain or a sub-path
+(`ROOT_PATH`).
+
+- **Dashboard.** The current composition next to the exact 6-color Spectra output (click
+  to zoom at actual pixels), the eInk profile and dithering used with the reasons, the mode
+  (slideshow with the next refresh, or ephemeral with a countdown and *Restore previous
+  image*), the frame state (battery, Wi-Fi, last seen, queued upload in deep-sleep mode),
+  recent images and the last log lines. *Next photo* and *Force push* are one click away.
+- **Playground.** Search TMDB and preview or send a poster, a Now Playing album cover
+  (sleeve or vinyl) or a title card. A preview never reaches the frame until you press
+  *Send this preview*. The **render lab** renders an uploaded image with up to four
+  profile/dither variants side by side (`auto` against manual choices) without storing or
+  sending anything.
+- **Settings.** Frame and schedule; Immich accounts with *Test connection*, then album
+  and people pickers with thumbnails; TMDB key with *Test key*; Smart Mix entries with
+  weight sliders and live percentages; eInk profile and dithering (`auto` by default);
+  the photo quality gate; the API key (show, copy, regenerate).
+
+Endpoints added for the UI (all need the API key or a session when authentication is on):
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/activity` | Last ~30 displayed images and ~200 log lines (secrets redacted, in memory only). |
+| `POST /api/playground/render` | Multipart image + `variants` (JSON list of `{profile, dither}`, up to 4) + optional `template` (`poster`, `album`, `title_card`): data URLs, the decision and the time of each variant. Never stored or pushed. |
+| `POST /api/display/title-card` | `title`, `subtitle`, `caption`, `accent` (`red`, `yellow`, `blue`, `green`, `white`); ephemeral by default (`ttl_minutes`, default 60). |
+| `GET /api/tmdb/search?q=` | Matches with a `w185` poster thumbnail URL (`media_type`, `year`, `language`). |
+| `POST /api/tmdb/test` | Checks the stored key or an unsaved one. |
+| `POST /api/immich/test` | Checks a saved account or an unsaved URL and key: version, people and album counts. |
+| `GET /api/immich/thumbnail/{account}/{asset\|person}/{id}` | Album cover or face thumbnail, proxied so the browser never sees Immich keys. |
 
 ## Security
 
 | Setup | Effect |
 | --- | --- |
 | Nothing set | Pure LAN usage: everything is open. |
-| `APP_API_KEY` only | `POST`/`PUT`/`DELETE`, `/api/config`, `/api/immich`, `/api/smart-mix` need the key; reads stay public. |
+| `APP_API_KEY` only | `POST`/`PUT`/`DELETE`, `/api/config`, `/api/immich`, `/api/smart-mix`, `/api/tmdb`, `/api/activity` need the key; other reads stay public. Sign in to the web UI with the key. |
 | `ADMIN_PASSWORD` | Web UI login (`admin` + password). **Everything** needs a session or the API key except `/api/health`, the login and, while `PUBLIC_IMAGE_ENDPOINTS=true`, the image endpoints. |
 
 - **API key.** Send it as `X-API-Key: <key>`, `Authorization: Bearer <key>` or `?api_key=`.
