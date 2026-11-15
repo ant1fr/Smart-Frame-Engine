@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -56,9 +57,18 @@ class SmartMixResolver:
     def __init__(self, rng: random.Random | None = None) -> None:
         self._rng = rng or random.Random()  # noqa: S311 - not security relevant
 
+    def roll(self, share: float) -> bool:
+        """Random Discovery: ``True`` with probability ``share``."""
+        return share > 0 and self._rng.random() < share
+
     @staticmethod
-    def pool(config: SmartMixConfig, context: MixContext | None = None) -> list[MixCandidate]:
-        """Enabled entries plus the live context (alone when it is exclusive)."""
+    def pool(
+        config: SmartMixConfig,
+        context: MixContext | None = None,
+        extras: Sequence[MixCandidate] = (),
+    ) -> list[MixCandidate]:
+        """Enabled entries plus the live context (alone when it is exclusive) and ``extras``
+        (ambient candidates)."""
         boost = (
             MixCandidate(context.rule, context.weight, None, context.label or "context")
             if context is not None
@@ -73,6 +83,7 @@ class SmartMixResolver:
         ]
         if boost is not None:
             pool.append(boost)
+        pool.extend(extras)
         return pool
 
     def order(
@@ -81,6 +92,7 @@ class SmartMixResolver:
         context: MixContext | None = None,
         *,
         last_index: int | None = None,
+        extras: Sequence[MixCandidate] = (),
     ) -> list[MixCandidate]:
         """Every candidate once, in the order they should be tried.
 
@@ -88,7 +100,7 @@ class SmartMixResolver:
         ``avoid_consecutive`` the entry shown last is moved to the end, so it is still a
         fallback when everything else fails.
         """
-        pool = self.pool(config, context)
+        pool = self.pool(config, context, extras)
         keyed = sorted(
             pool,
             key=lambda candidate: math.log(1.0 - self._rng.random()) / candidate.weight,

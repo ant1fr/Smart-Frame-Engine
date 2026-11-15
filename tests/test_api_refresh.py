@@ -167,6 +167,14 @@ def test_status_when_disabled(make_client: ClientFactory) -> None:
         "consecutive_failures": 0,
         "hold_until": None,
         "smart_mix": {"enabled": False, "entries": 0, "context": None},
+        "ambient": {
+            "presence": None,
+            "family_mode": None,
+            "weather": None,
+            "season": None,
+            "boost_tags": None,
+            "boost_people": None,
+        },
         "active_rule": None,
     }
 

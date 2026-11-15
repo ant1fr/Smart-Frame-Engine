@@ -38,6 +38,7 @@ from app.providers.base import (
 from app.providers.immich.client import ImmichClient, ImmichGateway, ImmichResponseError
 from app.providers.immich.dates import DateWindow, on_this_day_windows
 from app.providers.immich.faces import face_regions
+from app.providers.immich.family import FamilyDirectory, FamilyRules, is_locked
 from app.providers.immich.models import (
     AlbumInfo,
     AssetDto,
@@ -74,6 +75,7 @@ class _Plan:
     queries: tuple[str, ...]
     size: int
     windows: tuple[DateWindow | None, ...] = (None,)
+    family: bool = False
 
 
 @dataclass(slots=True)
@@ -83,6 +85,7 @@ class _AccountResult:
     known_names: list[str] = field(default_factory=list)
     target_ids: set[str] = field(default_factory=set)
     album_found: bool = False
+    rules: FamilyRules | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +181,8 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         max_bytes: int,
         rng: random.Random | None = None,
         clock: Callable[[], datetime] | None = None,
+        family: FamilyDirectory | None = None,
+        family_override: Callable[[], bool | None] | None = None,
     ) -> None:
         self._config_store = config_store
         self._gateway = gateway
@@ -186,6 +191,13 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         self._max_bytes = max_bytes
         self._rng = rng or random.Random()  # noqa: S311 - not security relevant
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._family = family or FamilyDirectory(config_store, gateway, people)
+        self._family_override = family_override or (lambda: None)
+
+    def family_active(self) -> bool:
+        """Whether Family Mode applies now (a live ambient context overrides the setting)."""
+        override = self._family_override()
+        return self._config_store.config.family.enabled if override is None else override
 
     # --- public API ----------------------------------------------------------------------
     async def fetch(self, request: ImmichDisplayRequest) -> ImageAsset:
@@ -219,6 +231,9 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         account_result = results[chosen.account]
         async with self._gateway.client(chosen.account) as client:
             asset = await client.asset(chosen.asset.id)
+            rules = account_result.rules
+            if is_locked(asset) or (rules is not None and not rules.allows(asset)):
+                raise NoCandidateError("The selected photo is not allowed (Locked Folder/Family)")
             data, quality = await self._download(client, asset)
             regions = await self._regions(client, asset, account_result.target_ids)
         title, details = build_title_and_details(chosen.account, asset, quality, len(regions))
@@ -261,24 +276,36 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
 
     # --- planning ------------------------------------------------------------------------
     def _plan(self, request: ImmichDisplayRequest, config: ImmichConfig) -> _Plan:
-        persons = config.persons if request.persons is None else request.persons
-        always = config.always_include if request.always_include is None else request.always_include
+        whole = request.whole_library
+        persons = [] if whole else (config.persons if request.persons is None else request.persons)
+        if whole:
+            always: list[str] = []
+        elif request.always_include is None:
+            always = config.always_include
+        else:
+            always = request.always_include
         album_id = (request.album_id or "").strip()
         album_name = (request.album_name or "").strip()
-        if not album_id and not album_name:
+        if not album_id and not album_name and not whole:
             album_name = config.album.strip()
         if request.mode == "album" and not album_id and not album_name:
             raise InvalidSelectionError("mode 'album' needs album_name or album_id")
+        names = _merge_names(persons, always)
+        family = self.family_active()
+        family_config = self._config_store.config.family
+        if family and not names and family_config.members and family_config.require_member:
+            names = _merge_names(family_config.members, ())
         return _Plan(
-            names=_merge_names(persons, always),
+            names=names,
             match_mode=request.match_mode or config.match_mode,
             album_name=album_name,
             album_id=album_id,
-            favorites=request.mode == "favorites" or config.favorites_only,
+            favorites=request.mode == "favorites" or (config.favorites_only and not whole),
             exclude_archived=config.exclude_archived,
             queries=tuple(request.clip_queries) if request.mode == "search" else (),
             size=config.search_candidates,
             windows=self._windows(request),
+            family=family,
         )
 
     def _windows(self, request: ImmichDisplayRequest) -> tuple[DateWindow | None, ...]:
@@ -336,6 +363,11 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
                     if asset.id not in seen:
                         seen.add(asset.id)
                         result.assets.append(asset)
+            if plan.family:
+                result.rules = await self._family.rules(
+                    account, client, self._config_store.config.family
+                )
+                result.assets = [a for a in result.assets if result.rules.allows(a)]
         return result
 
     @staticmethod
@@ -384,7 +416,7 @@ class ImmichProvider(BaseImageProvider[ImmichDisplayRequest]):
         seen: set[str] = set()
         for account, result in results.items():
             for asset in result.assets:
-                if asset.isTrashed or asset.type.upper() != "IMAGE":
+                if asset.isTrashed or asset.type.upper() != "IMAGE" or is_locked(asset):
                     continue
                 key = history_key(account, asset)
                 if key not in seen:

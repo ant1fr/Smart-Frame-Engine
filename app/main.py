@@ -22,6 +22,7 @@ from app import __version__
 from app.api.routes import activity as activity_routes
 from app.api.routes import auth as auth_routes
 from app.api.routes import config as config_routes
+from app.api.routes import context as context_routes
 from app.api.routes import display as display_routes
 from app.api.routes import fraimic as fraimic_routes
 from app.api.routes import images as image_routes
@@ -50,6 +51,7 @@ from app.providers.tmdb import PosterResolver, TmdbProvider
 from app.services.activity import ActivityLog
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
+from app.services.discovery import ZeroconfAdvertiser
 from app.services.display import DisplayService
 from app.services.ephemeral import EphemeralService
 from app.services.now_playing import NowPlayingService
@@ -150,6 +152,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             people,
             history_store,
             max_bytes=settings.max_upload_bytes,
+            family_override=lambda: scheduler.family_override(),
         )
         image_fetcher = ImageFetcher(url_policy, settings.max_upload_bytes)
         tmdb = TmdbProvider(config_store, image_fetcher)
@@ -196,6 +199,15 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         await ephemeral.start()  # before the delivery worker can drop an expired image
         await delivery.start()
         await scheduler.start()
+        advertiser: ZeroconfAdvertiser | None = None
+        if settings.zeroconf_enabled:
+            advertiser = ZeroconfAdvertiser(
+                port=settings.port,
+                version=__version__,
+                root_path=settings.root_path,
+                auth=auth_state.mode,
+            )
+            await advertiser.start()
         config = config_store.config
         logger.info(
             "Smart Frame Engine %s started (data_dir=%s, auth=%s, root_path=%r, panel=%s, "
@@ -212,6 +224,8 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if advertiser is not None:
+                await advertiser.stop()
             await scheduler.stop()
             await ephemeral.stop()
             await delivery.stop()
@@ -274,6 +288,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(refresh_routes.router)
     app.include_router(smart_mix_routes.display_router)
     app.include_router(smart_mix_routes.router)
+    app.include_router(context_routes.router)
     app.include_router(fraimic_routes.router)
     app.include_router(queue_routes.router)
     app.include_router(tmdb_routes.router)

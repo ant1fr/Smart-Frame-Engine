@@ -99,6 +99,16 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
+DEFAULT_WEATHER_QUERIES: Final[dict[str, str]] = {
+    "sunny": "bright sunny day outdoors",
+    "rainy": "cozy rainy day",
+    "cloudy": "calm cloudy sky landscape",
+    "snowy": "snow winter landscape",
+    "stormy": "dramatic sky storm clouds",
+    "foggy": "misty foggy morning",
+    "clear-night": "starry night sky",
+}
+
 ACCOUNT_NAME_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 
@@ -570,6 +580,67 @@ class SmartMixConfig(_Section):
     hemisphere: Literal["north", "south"] = Field(
         default="north", description="Used to map months to {season}"
     )
+    discovery_share: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=0.5,
+        description="Random Discovery: chance that a scheduled refresh shows a random photo "
+        "of the whole library (quality gate and Family Mode still apply) instead of an entry",
+    )
+
+
+class FamilyConfig(_Section):
+    """Family Mode: keep every Immich selection family-friendly, automatically.
+
+    No per-photo curation: the filters run on every candidate of every Immich selection
+    (Smart Mix, Random Discovery, smart search, refresh).
+    """
+
+    enabled: bool = Field(
+        default=False, description="Apply the filters below (POST /api/context can override)"
+    )
+    members: list[str] = Field(
+        default_factory=list,
+        description="Immich recognized people; only photos with at least one of them are used "
+        "(empty = the whole library)",
+    )
+    require_member: bool = Field(
+        default=True, description="Enforce `members` (false keeps only the private exclusions)"
+    )
+    private_albums: list[str] = Field(
+        default_factory=list, description="Album names or IDs whose photos are never shown"
+    )
+    private_people: list[str] = Field(
+        default_factory=list, description="People whose photos are never shown"
+    )
+
+    @field_validator("members", "private_albums", "private_people")
+    @classmethod
+    def _clean(cls, value: list[str]) -> list[str]:
+        return _clean_names(value)
+
+
+class AmbientConfig(_Section):
+    """How `POST /api/context` signals (weather, presence...) shape the Smart Mix."""
+
+    weather_queries: dict[str, str] = Field(
+        default_factory=lambda: dict(DEFAULT_WEATHER_QUERIES),
+        description="Weather keyword -> CLIP search phrase added to the mix while it is live",
+    )
+    boost_weight: float = Field(
+        default=3.0, gt=0, le=1000, description="Weight of each ambient candidate in the mix"
+    )
+    default_ttl_minutes: int = Field(
+        default=180, ge=1, le=10080, description="Lifetime of a context field without ttl_minutes"
+    )
+
+    @field_validator("weather_queries")
+    @classmethod
+    def _clean_weather(cls, value: dict[str, str]) -> dict[str, str]:
+        cleaned = {k.strip().casefold(): v.strip() for k, v in value.items()}
+        if any(not k or not v for k, v in cleaned.items()):
+            raise ValueError("weather keywords and phrases must not be empty")
+        return cleaned
 
 
 class SchedulerConfig(_Section):
@@ -648,6 +719,8 @@ class RuntimeConfig(BaseModel):
     eink: EinkConfig = Field(default_factory=EinkConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     smart_mix: SmartMixConfig = Field(default_factory=SmartMixConfig)
+    family: FamilyConfig = Field(default_factory=FamilyConfig)
+    ambient: AmbientConfig = Field(default_factory=AmbientConfig)
     quality: QualityConfig = Field(default_factory=QualityConfig)
 
     @property

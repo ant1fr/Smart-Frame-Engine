@@ -70,6 +70,11 @@ class EnvSettings(BaseSettings):
         default="*", description="Proxy IPs trusted for X-Forwarded-* headers"
     )
 
+    zeroconf_enabled: bool = Field(
+        default=True,
+        description="Advertise _smartframe._tcp.local. over mDNS (needs host networking in Docker)",
+    )
+
     max_upload_mb: int = Field(default=20, ge=1, le=200, description="Max image size in MB")
     block_private_urls: bool = Field(
         default=False,

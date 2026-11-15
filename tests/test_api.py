@@ -102,6 +102,8 @@ def test_config_schema(make_client: ClientFactory) -> None:
         "eink",
         "scheduler",
         "smart_mix",
+        "family",
+        "ambient",
         "quality",
     }
 

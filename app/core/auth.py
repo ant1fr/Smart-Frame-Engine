@@ -51,6 +51,7 @@ PROTECTED_PREFIXES: Final = (
     "/api/config",
     "/api/immich",
     "/api/smart-mix",
+    "/api/context",
     "/api/auth/api-key",
     "/api/tmdb",
     "/api/activity",

@@ -86,6 +86,7 @@ async def test_search_bodies_carry_the_filters() -> None:
         "type": "IMAGE",
         "size": 7,
         "withExif": True,
+        "withPeople": True,
         "personIds": ["p1", "p2"],
         "albumIds": ["al1"],
         "isFavorite": True,

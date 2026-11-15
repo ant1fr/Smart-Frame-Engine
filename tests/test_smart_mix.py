@@ -91,7 +91,10 @@ class MixHarness:
         self.other = FakeRunner()
         self.store = ConfigStore(
             tmp_path / "config.json",
-            {"scheduler": {"enabled": True}, "smart_mix": {"enabled": True, **smart_mix}},
+            {
+                "scheduler": {"enabled": True},
+                "smart_mix": {"enabled": True, "discovery_share": 0, **smart_mix},
+            },
         )
         self.store.load()
         self.state_path = tmp_path / "scheduler_state.json"
