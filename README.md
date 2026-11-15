@@ -21,6 +21,14 @@ docker compose up -d
 - API docs: `http://<host>:8080/docs`
 - Health: `http://<host>:8080/api/health`
 
+## Portainer
+
+Use *Stacks → Repository* with the `develop` branch and compose path
+`docker-compose.portainer.yml`. The stack variables `HOST_PORT`, `DATA_PATH` (host folder
+bound to `/data`), `PUID` and `PGID` configure the deployment; every other variable of
+`.env.example` (all optional) is passed to the app. Create `DATA_PATH` first and `chown` it
+to `PUID:PGID`. Immich, TMDB and the frame can also be set later in the web UI.
+
 ## Web UI
 
 A single page served at `/` (Tailwind CSS and Alpine.js from a CDN, no build step). It
