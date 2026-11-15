@@ -73,10 +73,14 @@ def setup_logging(level: str = "INFO") -> None:
         stream_handler.setFormatter(logging.Formatter(LOG_FORMAT))
         root.addHandler(stream_handler)
 
+    quiet = logging.DEBUG if root.level <= logging.DEBUG else logging.WARNING
     # APScheduler logs every job execution at INFO; the scheduler service logs its own.
-    logging.getLogger("apscheduler").setLevel(
-        logging.DEBUG if root.level <= logging.DEBUG else logging.WARNING
-    )
+    logging.getLogger("apscheduler").setLevel(quiet)
+    # httpx logs every request URL at INFO. URLs supplied by Home Assistant (artwork,
+    # fallback posters) may embed short-lived access tokens that are not known secrets, so
+    # request lines are only logged in DEBUG mode.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(quiet)
 
     handlers: list[logging.Handler] = list(root.handlers)
     for name in _UVICORN_LOGGERS:

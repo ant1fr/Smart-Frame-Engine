@@ -100,10 +100,10 @@ async def test_unknown_paths_rejected(config_path: Path, patch: dict[str, object
 async def test_reset_section_and_all(config_path: Path) -> None:
     store = make_store(config_path)
     await store.update(
-        {"eink": {"contrast": 1.5, "saturation": 1.0}, "tmdb": {"language": "fr-FR"}}
+        {"eink": {"contrast": 1.5, "saturation": 1.0}, "tmdb": {"language": "de-DE"}}
     )
     await store.reset(["eink"])
-    assert store.overrides == {"tmdb": {"language": "fr-FR"}}
+    assert store.overrides == {"tmdb": {"language": "de-DE"}}
     await store.reset()
     assert store.overrides == {}
     assert store.config == RuntimeConfig()

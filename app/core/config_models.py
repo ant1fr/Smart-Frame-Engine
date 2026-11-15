@@ -199,12 +199,33 @@ class ImmichConfig(_Section):
 class TmdbConfig(_Section):
     """TMDB (The Movie Database) settings for HD movie and TV posters."""
 
-    api_key: SecretStr = Field(default=SecretStr(""), description="TMDB API key (v3)")
-    language: str = Field(
-        default="en-US", description="Preferred poster/metadata language, e.g. fr-FR or en-US"
+    api_key: SecretStr = Field(
+        default=SecretStr(""), description="TMDB API key (v3) or read access token (v4)"
     )
-    image_size: Literal["w1280", "original"] = Field(
-        default="original", description="Poster resolution to download"
+    language: str = Field(
+        default="fr-FR",
+        description="Preferred poster/metadata language and region, e.g. fr-FR or en-US "
+        "(regional posters first, then same language, textless, English)",
+    )
+    image_size: Literal["w780", "w1280", "original"] = Field(
+        default="w780",
+        description='Poster resolution to download (original is sharper on the 31.5" panel)',
+    )
+    ephemeral_ttl_minutes: int = Field(
+        default=180,
+        ge=1,
+        le=1440,
+        description="How long an ephemeral poster stays before the previous image returns",
+    )
+    hold_minutes: int | None = Field(
+        default=None,
+        ge=1,
+        le=10080,
+        description="Protect a pushed poster from scheduled refreshes for this long",
+    )
+    fallback_title_card: bool = Field(
+        default=True,
+        description="Render a title card when no poster can be found (else answer 404)",
     )
 
     @field_validator("language")

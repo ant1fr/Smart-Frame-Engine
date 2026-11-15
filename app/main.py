@@ -56,7 +56,12 @@ color eInk panel and push them to a Fraimic frame.
 
 
 def _prepare_data_dir(settings: EnvSettings) -> None:
-    for directory in (settings.data_dir, settings.cache_dir, settings.queue_dir):
+    for directory in (
+        settings.data_dir,
+        settings.cache_dir,
+        settings.queue_dir,
+        settings.assets_dir,
+    ):
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
