@@ -13,6 +13,9 @@ from app.core.config_models import (
     ImmichConfig,
     RuntimeConfig,
     SchedulerConfig,
+    SmartMixConfig,
+    SmartMixEntry,
+    SourceRule,
     TmdbConfig,
     dump_config,
     is_masked,
@@ -157,7 +160,7 @@ def test_scheduler_pinned_rule() -> None:
     assert config.source_rule is not None
     assert config.source_rule.params == {"persons": ["Alice"]}
     with pytest.raises(ValidationError):
-        SchedulerConfig.model_validate({"source_rule": {"kind": "ftp"}})
+        SchedulerConfig.model_validate({"source_rule": {"kind": "Not A Kind"}})
 
 
 @pytest.mark.parametrize("value", ["24:00", "7:30", "12:60"])
@@ -236,3 +239,37 @@ def test_effective_profile_can_be_forced_per_source() -> None:
     photo = EinkConfig(profile="photo")
     assert photo.effective("official") is photo
     assert EinkConfig().effective("photo").saturation == 0.85
+
+
+def test_source_kind_is_an_open_identifier() -> None:
+    assert SourceRule(kind="now_playing").kind == "now_playing"
+    for bad in ("", "Immich", "a b", "x" * 65):
+        with pytest.raises(ValidationError):
+            SourceRule(kind=bad)
+
+
+def test_smart_mix_defaults_are_inert() -> None:
+    config = SmartMixConfig()
+    assert config.enabled is False and config.entries == []
+    assert config.max_attempts == 3 and config.avoid_consecutive is True
+
+
+def test_smart_mix_entry_wraps_a_rule() -> None:
+    entry = SmartMixEntry.model_validate(
+        {"kind": "immich", "params": {"persons": ["Alice"]}, "weight": 2.5, "label": "Alice"}
+    )
+    assert entry.enabled is True
+    assert entry.to_rule() == SourceRule(kind="immich", params={"persons": ["Alice"]})
+
+
+@pytest.mark.parametrize("weight", [0, -1, 1001])
+def test_smart_mix_entry_rejects_bad_weights(weight: float) -> None:
+    with pytest.raises(ValidationError):
+        SmartMixEntry(kind="immich", weight=weight)
+
+
+def test_smart_mix_rejects_unknown_fields_and_too_many_entries() -> None:
+    with pytest.raises(ValidationError):
+        SmartMixEntry.model_validate({"kind": "immich", "bogus": 1})
+    with pytest.raises(ValidationError):
+        SmartMixConfig(entries=[SmartMixEntry(kind="immich")] * 51)

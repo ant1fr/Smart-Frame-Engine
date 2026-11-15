@@ -78,6 +78,7 @@ class EnvSettings(BaseSettings):
     fraimic_panel: str | None = None
     orientation: str | None = None
     scheduler_enabled: bool | None = None
+    smart_mix_enabled: bool | None = None
     refresh_interval_hours: float | None = None
     quiet_hours_start: str | None = None
     quiet_hours_end: str | None = None
@@ -119,7 +120,9 @@ class EnvSettings(BaseSettings):
             return None
         return value
 
-    @field_validator("scheduler_enabled", "refresh_interval_hours", mode="before")
+    @field_validator(
+        "scheduler_enabled", "smart_mix_enabled", "refresh_interval_hours", mode="before"
+    )
     @classmethod
     def _blank_scalar_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -205,6 +208,7 @@ class EnvSettings(BaseSettings):
             ("scheduler", "quiet_hours_start"): self.quiet_hours_start,
             ("scheduler", "quiet_hours_end"): self.quiet_hours_end,
             ("scheduler", "timezone"): self.tz,
+            ("smart_mix", "enabled"): self.smart_mix_enabled,
         }
         seed: dict[str, dict[str, Any]] = {}
         for (section, name), value in candidates.items():
