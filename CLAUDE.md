@@ -54,6 +54,8 @@ Clean, responsive (mobile/desktop) English web interface allowing users to:
 
 ### 5. REST API (`GET /docs`)
 - `POST /api/display/immich`: Select and display an Immich photo (`mode` random|album|favorites|search, `persons` as plain names, `match_mode`, `always_include`, `album_name`/`album_id`, `clip_queries`, `accounts`, `fit`, `push_to_fraimic`, `ignore_history`, `skip_quality_gate`). Photos are vetted by a thumbnail-based quality gate (`quality` settings section) and a burst cooldown before the original is downloaded.
+- `POST /api/display/smart-search`: Contextual push (`query`/`queries`, `persons`, `on_this_day`, `taken_after`/`taken_before`, `ephemeral` default true, `hold_minutes`) without Immich IDs.
+- `GET /api/smart-mix`, `POST`/`DELETE /api/smart-mix/context`: Inspect the weighted Smart Mix playlist (`smart_mix` settings section; source-agnostic `kind` + `params` entries) and set/clear a temporary boost. Rule precedence for scheduled refreshes and `POST /api/refresh`: pinned `scheduler.source_rule` > Smart Mix > last non-ephemeral manual display. Direct pushes (`ephemeral`, `hold_minutes`) reset the timer without altering the playlist. `/api/smart-mix` is API-key protected for every method.
 - `GET /api/immich/albums`, `GET /api/immich/people`, `POST /api/immich/people/refresh`: Discovery across the configured Immich accounts (`immich.accounts`; keys are masked and `GET /api/immich/*` is API-key protected when `APP_API_KEY` is set).
 - `POST /api/display/media`: Search and display an HD poster (`title`, `media_type`, `fallback_url`, `push_to_fraimic`).
 - `POST /api/fraimic/wakeup`: Webhook signaling frame wake-up to flush any queued upload immediately.

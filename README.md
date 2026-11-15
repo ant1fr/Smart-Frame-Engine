@@ -85,6 +85,9 @@ curl -X POST .../api/display/immich -H 'Content-Type: application/json' -d '{"mo
 | `fit`, `push_to_fraimic` | Fit override, push to the frame (default true) |
 | `ignore_history` | Allow photos shown within `anti_repeat_days` or taken close to one |
 | `skip_quality_gate` | Skip the suitability check (default: skipped in `album` mode, checked otherwise) |
+| `taken_after`, `taken_before` | Only photos taken in this range (ISO 8601 with a timezone) |
+| `on_this_day` | Memories: `{"window_days": 3, "years_back": 10, "min_years_ago": 1}` around today's date in past years (exclusive with the date range) |
+| `ephemeral`, `hold_minutes` | Temporary push: do not remember it as the rule to replay; keep it up at least this long (see [Smart Mix](#smart-mix-and-smart-search)) |
 
 Unset filters fall back to the `immich` section of the settings. All modes share one
 query path, so persons, albums and favorites combine freely.
@@ -173,10 +176,12 @@ The frame can update itself without Home Assistant. The scheduler replays the **
 rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default 6, minimum
 0.25) once `scheduler.enabled` is on (`SCHEDULER_ENABLED=true`):
 
-- **Active rule.** The last request made through `POST /api/display/immich` (pushed to the
+- **Active rule**, in order of precedence: (1) the rule pinned in `scheduler.source_rule`;
+  (2) the [Smart Mix](#smart-mix-and-smart-search) playlist, when enabled and non-empty;
+  (3) the last non-ephemeral request made through `POST /api/display/immich` (pushed to the
   frame; previews with `push_to_fraimic=false` do not count), so showing "Alice and Bob
   at the beach" once keeps rotating through those photos with the anti-repeat history.
-  Pin a fixed rule in `scheduler.source_rule` to override it:
+  Pin a fixed rule in `scheduler.source_rule` to override the others:
 
   ```bash
   curl -X PUT http://localhost:8000/api/config -H 'Content-Type: application/json'     -d '{"scheduler": {"enabled": true, "source_rule":
@@ -184,7 +189,7 @@ rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default
   ```
 
   `params` takes the fields of `POST /api/display/immich` (except `push_to_fraimic` and
-  `ignore_history`). Only Immich rules can be replayed for now. The last rule is kept in
+  `ignore_history`, `ephemeral`, `hold_minutes`). Only Immich rules can be replayed for now. The last rule is kept in
   `./data/scheduler_state.json`, so displaying a photo never rewrites your settings.
 - **Timer.** Any display (a manual photo, an upload, a refresh) restarts the interval, so
   a picture chosen by hand stays up for a full interval. A refresh that became due while
@@ -202,7 +207,7 @@ rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/refresh` | Replay the active rule now and push the result (ignores quiet hours; 409 when there is nothing to replay or a refresh is running) |
-| `GET /api/status` | `scheduler`: `next_run_at`, `in_quiet_hours`, `last_run` (`ok`/`failed`/`skipped` and why), `consecutive_failures`, `active_rule` (`pinned` or `last`) |
+| `GET /api/status` | `scheduler`: `next_run_at`, `in_quiet_hours`, `last_run` (`ok`/`failed`/`skipped` and why), `consecutive_failures`, `active_rule` (`pinned`, `smart_mix` or `last`), `hold_until`, `smart_mix` |
 
 ```yaml
 # Home Assistant: a "next photo" button
@@ -213,6 +218,115 @@ rest_command:
     timeout: 60   # selecting, downloading and dithering a photo takes a few seconds
     headers:
       X-API-Key: !secret smart_frame_api_key   # only when APP_API_KEY is set
+```
+
+## Smart Mix and Smart Search
+
+**Smart Mix** is a weighted playlist of source rules for scheduled refreshes, so the frame
+shows a varied rotation (family, favorites, "this season", memories...) instead of one
+filter. It knows nothing about providers: each entry wraps a rule (`kind` + `params`, the
+body of the matching display endpoint), and the runner registered for that `kind` plays it.
+Adding a provider later needs no change to the configuration.
+
+```bash
+curl -X PUT http://localhost:8000/api/config -H 'Content-Type: application/json' -d '{
+  "scheduler": {"enabled": true, "interval_hours": 3},
+  "smart_mix": {"enabled": true, "entries": [
+    {"label": "Family", "kind": "immich", "weight": 5,
+     "params": {"persons": ["Alice", "Bob"], "match_mode": "any"}},
+    {"label": "This season", "kind": "immich", "weight": 2,
+     "params": {"mode": "search", "clip_queries": ["{season} landscape", "{month_name} light"]}},
+    {"label": "On this day", "kind": "immich", "weight": 1,
+     "params": {"on_this_day": {"window_days": 3, "years_back": 10}}}
+  ]}
+}'
+```
+
+- **Weights** are relative. Each refresh orders the enabled entries by weighted random
+  sampling and tries them in turn: if one has no candidate (nothing left in the anti-repeat
+  history, an empty album) or fails, the next one is tried, up to `smart_mix.max_attempts`
+  (default 3). With `avoid_consecutive` (default) the entry shown last is tried last.
+- **Context placeholders.** `{season}`, `{month}`, `{month_name}` and `{year}` in string
+  params are expanded each time the entry runs (`smart_mix.hemisphere` flips the seasons;
+  the timezone is `scheduler.timezone`). `on_this_day` searches `window_days` around today's
+  date in each of the last `years_back` years; `taken_after` / `taken_before` give a fixed
+  date range. No album IDs are needed.
+- **Precedence** for scheduled refreshes and `POST /api/refresh`: the pinned
+  `scheduler.source_rule`, then the Smart Mix (enabled with at least one enabled entry),
+  then the last non-ephemeral manual display. Mix refreshes never overwrite that last
+  display, so turning the mix off restores the previous behavior.
+- **Direct pushes always win.** `POST /api/display/immich`, `/upload` and `/smart-search`
+  display immediately, restart the refresh timer and never touch the playlist or your
+  settings. Add `"ephemeral": true` so a temporary push (a movie poster, a song) is not
+  remembered as the rule to replay, and `"hold_minutes": 150` so no scheduled refresh
+  replaces it before then (`hold_until` in `GET /api/status`). A manual
+  `POST /api/refresh` ignores the hold.
+
+**Smart Search** is the same idea for one-off pushes: describe what you want, never an ID.
+
+```bash
+curl -X POST http://localhost:8000/api/display/smart-search -H 'Content-Type: application/json' \
+  -d '{"query": "rainy sunday", "persons": ["Alice"], "hold_minutes": 120}'
+curl -X POST .../api/display/smart-search -H 'Content-Type: application/json' \
+  -d '{"on_this_day": true}'
+```
+
+`query` / `queries` are CLIP phrases (placeholders allowed), combined freely with `persons`,
+`match_mode`, `accounts`, `on_this_day`, `taken_after` / `taken_before`, `fit`,
+`push_to_fraimic` and `ignore_history`. Smart-search pushes are ephemeral by default
+(`"ephemeral": false` stores one as the rule to replay).
+
+A **context boost** shapes the *next scheduled refreshes* for a while, without displaying
+anything now: it joins the playlist with its own weight (default 3), or replaces it with
+`"exclusive": true`, until `ttl_minutes` pass.
+
+```bash
+curl -X POST .../api/smart-mix/context -H 'Content-Type: application/json' \
+  -d '{"queries": ["cozy rainy day"], "weight": 5, "ttl_minutes": 240, "label": "rain"}'
+curl -X DELETE .../api/smart-mix/context
+```
+
+For another source, send `kind` and `params` instead of `queries`. Unknown kinds are
+rejected: `GET /api/smart-mix` lists the supported ones.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/display/smart-search` | Contextual search and immediate (ephemeral) push |
+| `POST /api/smart-mix/context` | Temporary boost or override of the playlist (409 when the mix is disabled) |
+| `DELETE /api/smart-mix/context` | Remove the boost |
+| `GET /api/smart-mix` | Playlist with each entry's probability, resolved placeholders, live boost and supported kinds |
+
+`/api/smart-mix` requires the API key for every method when `APP_API_KEY` is set.
+`GET /api/status` reports `scheduler.smart_mix`, `hold_until`, and the entry shown by the
+last refresh (`last_run.entry_label`).
+
+```yaml
+# Home Assistant: push a contextual photo on demand, boost the mix while it rains
+rest_command:
+  frame_smart_search:
+    url: http://smart-frame.lan:8000/api/display/smart-search
+    method: POST
+    content_type: application/json
+    payload: '{"query": "{{ query }}", "hold_minutes": {{ hold | default(120) }}}'
+    timeout: 60
+    headers:
+      X-API-Key: !secret smart_frame_api_key
+  frame_rain_boost:
+    url: http://smart-frame.lan:8000/api/smart-mix/context
+    method: POST
+    content_type: application/json
+    payload: '{"queries": ["cozy rainy day"], "weight": 5, "ttl_minutes": 240, "label": "rain"}'
+    headers:
+      X-API-Key: !secret smart_frame_api_key
+
+automation:
+  - alias: Frame - rainy day mood
+    trigger:
+      - platform: state
+        entity_id: weather.home
+        to: rainy
+    action:
+      - service: rest_command.frame_rain_boost
 ```
 
 ## Development
