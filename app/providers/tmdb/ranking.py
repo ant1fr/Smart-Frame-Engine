@@ -10,7 +10,9 @@ Québec one (``fr``/``CA``). For ``language="fr-FR"`` posters are ranked:
 4. English;
 5. anything else.
 
-Within a tier, the best rated poster wins: ``(vote_average, vote_count)`` descending.
+Within a tier, posters large enough for the frame come first (``min_width``: a poster
+smaller than its on-panel size has to be enlarged and looks soft), then the best rated:
+``(vote_average, vote_count)`` descending. The language tiers always take precedence.
 """
 
 from __future__ import annotations
@@ -45,16 +47,45 @@ def poster_tier(image: TmdbImage, lang: str, region: str | None) -> int:
     return 4
 
 
-def rank_posters(images: Sequence[TmdbImage], lang: str, region: str | None) -> list[TmdbImage]:
-    """Posters ordered by regional preference, then rating (stable for ties)."""
+def rank_posters(
+    images: Sequence[TmdbImage], lang: str, region: str | None, *, min_width: int = 0
+) -> list[TmdbImage]:
+    """Posters ordered by regional preference, then sharpness, then rating (stable).
+
+    Args:
+        images: Candidate posters.
+        lang: Wanted language (``fr``).
+        region: Wanted region (``FR``) or ``None``.
+        min_width: On-panel width; narrower originals rank last within their tier.
+    """
     return sorted(
         images,
         key=lambda image: (
             poster_tier(image, lang, region),
+            image.width < min_width,
             -image.vote_average,
             -image.vote_count,
         ),
     )
+
+
+#: TMDB poster sizes below "original", by width.
+SCALED_SIZES: Final = ((780, "w780"), (1280, "w1280"))
+
+
+def choose_image_size(configured: str, original_width: int, needed_width: int) -> str:
+    """The TMDB size to download a poster at.
+
+    ``auto`` picks the smallest scaled size that covers ``needed_width`` **and** is a real
+    downscale of the original (TMDB upscales silently when asked for more pixels than the
+    original has), else ``original``. An unknown original width (0) gives ``original``.
+    """
+    if configured != "auto":
+        return configured
+    for width, name in SCALED_SIZES:
+        if needed_width <= width <= original_width:
+            return name
+    return "original"
 
 
 def pick_result(

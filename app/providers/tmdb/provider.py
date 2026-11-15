@@ -27,7 +27,7 @@ from app.clients.http_images import ImageFetcher, ImageFetchError, decode_base64
 from app.core.config_store import ConfigStore
 from app.core.security import InvalidImageError, PayloadTooLargeError, verify_image_bytes
 from app.core.text import fold
-from app.processor.templates import PosterLayout, TitleCardLayout
+from app.processor.templates import Canvas, PosterLayout, TitleCardLayout, poster_target_width
 from app.providers.base import (
     BaseImageProvider,
     ImageAsset,
@@ -38,7 +38,12 @@ from app.providers.base import (
 )
 from app.providers.tmdb.client import TmdbClient, image_url
 from app.providers.tmdb.models import SearchResult, TmdbImage, TmdbRequest
-from app.providers.tmdb.ranking import parse_language, pick_result, rank_posters
+from app.providers.tmdb.ranking import (
+    choose_image_size,
+    parse_language,
+    pick_result,
+    rank_posters,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,14 +121,19 @@ class TmdbProvider(BaseImageProvider[TmdbRequest]):
                 posters = await client.posters(
                     chosen.media_type, chosen.id, include_languages=include
                 )
-        ranked = rank_posters(posters, lang, region)
-        candidates = [poster.file_path for poster in ranked[:MAX_DOWNLOAD_ATTEMPTS]]
-        if chosen.poster_path and chosen.poster_path not in candidates:
-            candidates.append(chosen.poster_path)  # the default poster as a last resort
+        needed = self.target_width()
+        ranked = rank_posters(posters, lang, region, min_width=needed)
+        candidates = [
+            (poster.file_path, choose_image_size(config.image_size, poster.width, needed))
+            for poster in ranked[:MAX_DOWNLOAD_ATTEMPTS]
+        ]
+        if chosen.poster_path and all(chosen.poster_path != path for path, _ in candidates):
+            # The default poster as a last resort (its original size is unknown).
+            candidates.append((chosen.poster_path, choose_image_size(config.image_size, 0, needed)))
         if not candidates:
             raise NoCandidateError(f"TMDB has no poster for {chosen.title!r}")
 
-        data, path = await self._download(candidates, config.image_size)
+        data, path, size = await self._download(candidates)
         poster = next((p for p in ranked if p.file_path == path), None)
         details: dict[str, JsonValue] = {
             "title": chosen.title,
@@ -135,6 +145,8 @@ class TmdbProvider(BaseImageProvider[TmdbRequest]):
             "language": language,
             "poster_language": poster.iso_639_1 if poster else None,
             "poster_region": poster.iso_3166_1 if poster else None,
+            "poster_size": size,
+            "poster_original_width": poster.width if poster else None,
         }
         return ImageAsset(
             data=data,
@@ -147,11 +159,17 @@ class TmdbProvider(BaseImageProvider[TmdbRequest]):
             track_history=False,
         )
 
-    async def _download(self, paths: list[str], size: str) -> tuple[bytes, str]:
+    def target_width(self) -> int:
+        """Width (px) of the poster on the configured panel and orientation."""
+        config = self._config_store.config
+        canvas = Canvas(config.frame_size, config.eink, config.display.safe_margin_px)
+        return poster_target_width(canvas)
+
+    async def _download(self, candidates: list[tuple[str, str]]) -> tuple[bytes, str, str]:
         failure: ImageFetchError | None = None
-        for path in paths:
+        for path, size in candidates:
             try:
-                return await self._fetcher.fetch(image_url(path, size)), path
+                return await self._fetcher.fetch(image_url(path, size)), path, size
             except ImageFetchError as exc:
                 logger.info("TMDB poster download failed, trying the next one: %s", exc)
                 failure = exc

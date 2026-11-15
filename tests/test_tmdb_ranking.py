@@ -4,7 +4,13 @@ import pytest
 
 from app.core.text import fold
 from app.providers.tmdb.models import SearchResult, TmdbImage, TmdbRequest
-from app.providers.tmdb.ranking import parse_language, pick_result, poster_tier, rank_posters
+from app.providers.tmdb.ranking import (
+    choose_image_size,
+    parse_language,
+    pick_result,
+    poster_tier,
+    rank_posters,
+)
 
 
 def poster(
@@ -126,3 +132,28 @@ def test_fold_transliterates_ligatures() -> None:
     assert fold("Œuvre") == "oeuvre"
     assert fold("Straße") == "strasse"
     assert fold("Søren") == "soren"
+
+
+def test_sharp_posters_come_first_within_a_tier_only() -> None:
+    small = poster("small_fr", "fr", "FR", votes=9.9).model_copy(update={"width": 600})
+    big = poster("big_fr", "fr", "FR", votes=5.0).model_copy(update={"width": 2000})
+    big_en = poster("big_en", "en", votes=9.0).model_copy(update={"width": 2000})
+    ranked = rank_posters([small, big_en, big], "fr", "FR", min_width=987)
+    assert names(ranked) == ["big_fr", "small_fr", "big_en"]  # language still wins
+    assert names(rank_posters([small, big], "fr", "FR")) == ["small_fr", "big_fr"]
+
+
+@pytest.mark.parametrize(
+    ("configured", "original", "needed", "expected"),
+    [
+        ("auto", 2000, 987, "w1280"),  # 13.3" portrait: a real downscale is enough
+        ("auto", 2000, 720, "w780"),  # 13.3" landscape
+        ("auto", 2000, 1296, "original"),  # 31.5" portrait needs more than w1280
+        ("auto", 1000, 987, "original"),  # w1280 would be a TMDB-side upscale
+        ("auto", 600, 987, "original"),  # small original: never ask TMDB to upscale
+        ("auto", 0, 987, "original"),  # unknown original size
+        ("w780", 2000, 1296, "w780"),  # an explicit size is respected
+    ],
+)
+def test_choose_image_size(configured: str, original: int, needed: int, expected: str) -> None:
+    assert choose_image_size(configured, original, needed) == expected

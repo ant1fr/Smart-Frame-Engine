@@ -31,7 +31,7 @@ def mock_amelie() -> None:
     respx.get(f"{API}/movie/194/images").respond(
         json={"posters": [{"file_path": "/fr.jpg", "iso_639_1": "fr", "iso_3166_1": "FR"}]}
     )
-    respx.get(f"{IMG}/w780/fr.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/original/fr.jpg").respond(content=png_bytes())
 
 
 def tmdb_client(make_client: ClientFactory, **overrides: Any) -> TestClient:
@@ -136,7 +136,7 @@ def test_media_alias_accepts_title_and_auto(make_client: ClientFactory) -> None:
         json={"results": [{"id": 194, "media_type": "movie", "title": "Amélie"}]}
     )
     respx.get(f"{API}/movie/194/images").respond(json={"posters": [{"file_path": "/fr.jpg"}]})
-    respx.get(f"{IMG}/w780/fr.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/original/fr.jpg").respond(content=png_bytes())
     client = tmdb_client(make_client)
     response = client.post(
         "/api/display/media",
