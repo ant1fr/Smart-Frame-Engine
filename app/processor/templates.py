@@ -54,6 +54,8 @@ VINYL_GROOVE: Final[RGB] = (58, 58, 58)
 #: Light rim and sheen so the record stays visible on dark (black) backgrounds.
 VINYL_RIM: Final[RGB] = (150, 150, 150)
 VINYL_SHEEN: Final[RGB] = (95, 95, 95)
+#: Artwork enlarged by more than this factor skips the edge-enhance / sharpen chain.
+UPSCALE_TOLERANCE: Final = 1.02
 #: Background colors are pulled this much toward the nearest panel color (cleaner dither).
 PALETTE_PULL: Final = 0.35
 TITLE_CARD_BACKGROUND: Final[RGB] = (0, 0, 0)
@@ -312,14 +314,50 @@ def _fit_album_text(layout: AlbumLayout, width: int, height: int, unit: int) -> 
 
 
 # --- Templates --------------------------------------------------------------------------
+# --- Geometry (also used by providers to request artwork at the right resolution) ---
+def poster_slot(canvas: Canvas) -> Size:
+    """The area a poster is fitted into."""
+    inset = canvas.pad(POSTER_INSET)
+    return canvas.size[0] - 2 * inset, canvas.size[1] - 2 * inset
+
+
+def poster_target_width(canvas: Canvas, aspect: float = 2 / 3) -> int:
+    """Width (px) a poster of ``aspect`` (width / height) is displayed at."""
+    slot_w, slot_h = poster_slot(canvas)
+    return min(slot_w, round(slot_h * aspect))
+
+
+def album_cover_side(canvas: Canvas, style: AlbumStyle) -> int:
+    """Side (px) of the square album cover."""
+    width, height = canvas.size
+    pad = canvas.pad(0.06)
+    gap = round(canvas.short_side * 0.045)
+    group_factor = 1 + VINYL_PEEK if style == "vinyl" else 1.0
+    if canvas.portrait:
+        min_text = round(height * 0.2)
+        cover = min(round((width - 2 * pad) / group_factor), height - 2 * pad - gap - min_text)
+        return cover if style == "vinyl" else min(cover, round(width * 0.82))
+    text_min = round(width * 0.3)
+    return min(height - 2 * pad, round((width - 2 * pad - gap - text_min) / group_factor))
+
+
+def _enhance_artwork(fitted: Image.Image, source: Image.Image, eink: EinkConfig) -> Image.Image:
+    """eInk enhancement of scaled artwork.
+
+    The edge-enhance / sharpen chain is skipped when the artwork had to be enlarged:
+    sharpening an upscale only amplifies its blur and JPEG blocks.
+    """
+    upscaled = fitted.width > source.width * UPSCALE_TOLERANCE
+    return enhance(fitted, eink, edge_filters=not upscaled)
+
+
 def compose_poster(image: Image.Image, canvas: Canvas) -> Image.Image:
     """The full poster centered over a blurred, darkened backdrop of itself."""
     width, height = canvas.size
     backdrop = blurred_background(image, canvas.size)
     backdrop = ImageEnhance.Brightness(backdrop).enhance(POSTER_BACKDROP_DARKEN)
     backdrop = enhance(backdrop, canvas.eink, edge_filters=False)
-    inset = canvas.pad(POSTER_INSET)
-    poster = enhance(fit_inside(image, (width - 2 * inset, height - 2 * inset)), canvas.eink)
+    poster = _enhance_artwork(fit_inside(image, poster_slot(canvas)), image, canvas.eink)
     border = max(2, round(canvas.short_side * 0.003))
     origin = ((width - poster.width) // 2, (height - poster.height) // 2)
     _paste_framed(backdrop, poster, origin, border=border)
@@ -336,12 +374,9 @@ def compose_album(image: Image.Image, layout: AlbumLayout, canvas: Canvas) -> Im
     gap = round(canvas.short_side * 0.045)
     vinyl = layout.style == "vinyl"
     group_factor = 1 + VINYL_PEEK if vinyl else 1.0
+    cover = album_cover_side(canvas, layout.style)
 
     if canvas.portrait:
-        min_text = round(height * 0.2)
-        cover = min(round((width - 2 * pad) / group_factor), height - 2 * pad - gap - min_text)
-        if not vinyl:
-            cover = min(cover, round(width * 0.82))
         text_width = width - 2 * pad
         text_height = height - 2 * pad - cover - gap
         block = _fit_album_text(layout, text_width, text_height, canvas.short_side)
@@ -351,8 +386,6 @@ def compose_album(image: Image.Image, layout: AlbumLayout, canvas: Canvas) -> Im
         text_box = (pad, top + cover + gap)
         align: Align = "center"
     else:
-        text_min = round(width * 0.3)
-        cover = min(height - 2 * pad, round((width - 2 * pad - gap - text_min) / group_factor))
         left = pad
         top = (height - cover) // 2
         text_x = left + round(cover * group_factor) + gap
@@ -361,7 +394,9 @@ def compose_album(image: Image.Image, layout: AlbumLayout, canvas: Canvas) -> Im
         text_box = (text_x, (height - block.height) // 2)
         align = "left"
 
-    sleeve = enhance(_square_cover(image, cover, background), canvas.eink)
+    sleeve = _square_cover(image, cover, background)
+    upscaled = cover > max(image.size) * UPSCALE_TOLERANCE
+    sleeve = enhance(sleeve, canvas.eink, edge_filters=not upscaled)
     if vinyl:
         disc = _vinyl_disc(cover - 2 * max(2, round(cover * 0.02)), accent_from(image))
         disc_x = left + round(cover * VINYL_PEEK)

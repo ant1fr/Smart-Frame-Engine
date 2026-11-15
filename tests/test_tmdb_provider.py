@@ -72,10 +72,22 @@ AMELIE_SEARCH = {
 }
 AMELIE_POSTERS = {
     "posters": [
-        {"file_path": "/en.jpg", "iso_639_1": "en", "vote_average": 9.0, "vote_count": 50},
-        {"file_path": "/fr_ca.jpg", "iso_639_1": "fr", "iso_3166_1": "CA", "vote_average": 6.0},
-        {"file_path": "/fr_fr.jpg", "iso_639_1": "fr", "iso_3166_1": "FR", "vote_average": 5.0},
-        {"file_path": "/textless.jpg", "iso_639_1": None, "vote_average": 8.0},
+        {"file_path": "/en.jpg", "iso_639_1": "en", "vote_average": 9.0, "width": 2000},
+        {
+            "file_path": "/fr_ca.jpg",
+            "iso_639_1": "fr",
+            "iso_3166_1": "CA",
+            "vote_average": 6.0,
+            "width": 2000,
+        },
+        {
+            "file_path": "/fr_fr.jpg",
+            "iso_639_1": "fr",
+            "iso_3166_1": "FR",
+            "vote_average": 5.0,
+            "width": 2000,
+        },
+        {"file_path": "/textless.jpg", "iso_639_1": None, "vote_average": 8.0, "width": 2000},
     ]
 }
 
@@ -84,7 +96,7 @@ AMELIE_POSTERS = {
 async def test_fetch_downloads_the_best_regional_poster(setup: Setup) -> None:
     search = respx.get(f"{API}/search/movie").respond(json=AMELIE_SEARCH)
     images = respx.get(f"{API}/movie/194/images").respond(json=AMELIE_POSTERS)
-    download = respx.get(f"{IMG}/w780/fr_fr.jpg").respond(content=png_bytes())
+    download = respx.get(f"{IMG}/w1280/fr_fr.jpg").respond(content=png_bytes())
 
     asset = await setup.provider.fetch(TmdbRequest(query="amelie", media_type="movie", year=2001))
 
@@ -131,7 +143,7 @@ async def test_multi_search_skips_people_and_prefers_an_exact_title(setup: Setup
     respx.get(f"{API}/tv/1396/images").respond(
         json={"posters": [{"file_path": "/bb.jpg", "iso_639_1": "en"}]}
     )
-    respx.get(f"{IMG}/w780/bb.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/original/bb.jpg").respond(content=png_bytes())
     asset = await setup.provider.fetch(TmdbRequest(query="breaking bad", language="en-US"))
     assert asset.details["media_type"] == "tv"
     assert asset.details["tmdb_id"] == 1396
@@ -145,7 +157,7 @@ async def test_season_posters_with_fallback_to_the_series(setup: Setup) -> None:
     season = respx.get(f"{API}/tv/1399/season/3/images").respond(
         json={"posters": [{"file_path": "/s3.jpg", "iso_639_1": "fr"}]}
     )
-    respx.get(f"{IMG}/w780/s3.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/original/s3.jpg").respond(content=png_bytes())
     asset = await setup.provider.fetch(
         TmdbRequest(query="Game of Thrones", media_type="tv", season=3)
     )
@@ -155,7 +167,7 @@ async def test_season_posters_with_fallback_to_the_series(setup: Setup) -> None:
 
     respx.get(f"{API}/tv/1399/season/9/images").respond(404)
     respx.get(f"{API}/tv/1399/images").respond(json={"posters": []})
-    respx.get(f"{IMG}/w780/series.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/original/series.jpg").respond(content=png_bytes())
     fallback = await setup.provider.fetch(
         TmdbRequest(query="Game of Thrones", media_type="tv", season=9)
     )
@@ -166,8 +178,8 @@ async def test_season_posters_with_fallback_to_the_series(setup: Setup) -> None:
 async def test_a_failed_download_tries_the_next_ranked_poster(setup: Setup) -> None:
     respx.get(f"{API}/search/movie").respond(json=AMELIE_SEARCH)
     respx.get(f"{API}/movie/194/images").respond(json=AMELIE_POSTERS)
-    respx.get(f"{IMG}/w780/fr_fr.jpg").respond(404)
-    respx.get(f"{IMG}/w780/fr_ca.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/w1280/fr_fr.jpg").respond(404)
+    respx.get(f"{IMG}/w1280/fr_ca.jpg").respond(content=png_bytes())
     asset = await setup.provider.fetch(TmdbRequest(query="Amélie", media_type="movie"))
     assert asset.details["poster_region"] == "CA"
 
@@ -211,7 +223,7 @@ async def test_upstream_errors_are_reported(setup: Setup) -> None:
 async def test_resolver_returns_the_tmdb_poster_when_found(setup: Setup) -> None:
     respx.get(f"{API}/search/movie").respond(json=AMELIE_SEARCH)
     respx.get(f"{API}/movie/194/images").respond(json=AMELIE_POSTERS)
-    respx.get(f"{IMG}/w780/fr_fr.jpg").respond(content=png_bytes())
+    respx.get(f"{IMG}/w1280/fr_fr.jpg").respond(content=png_bytes())
     asset = await setup.resolver.resolve(
         TmdbRequest(query="Amélie", media_type="movie"), fallback_url="https://ha.test/pic.png"
     )
@@ -289,3 +301,49 @@ async def test_resolver_works_without_a_tmdb_key(tmp_path: Path) -> None:
     assert isinstance(asset.layout, TitleCardLayout)
     assert asset.layout.subtitle == "Season 2"
     assert "not configured" in str(asset.details["fallback_reason"])
+
+
+@respx.mock
+async def test_a_low_res_regional_poster_yields_to_a_sharp_one(setup: Setup) -> None:
+    """Real case: the best rated fr-FR poster of "Intouchables" is only 600x900."""
+    respx.get(f"{API}/search/movie").respond(json=AMELIE_SEARCH)
+    respx.get(f"{API}/movie/194/images").respond(
+        json={
+            "posters": [
+                {
+                    "file_path": "/small.jpg",
+                    "iso_639_1": "fr",
+                    "iso_3166_1": "FR",
+                    "vote_average": 9.0,
+                    "width": 600,
+                },
+                {
+                    "file_path": "/sharp.jpg",
+                    "iso_639_1": "fr",
+                    "iso_3166_1": "FR",
+                    "vote_average": 5.0,
+                    "width": 2000,
+                },
+            ]
+        }
+    )
+    route = respx.get(f"{IMG}/w1280/sharp.jpg").respond(content=png_bytes())
+    asset = await setup.provider.fetch(TmdbRequest(query="Amélie", media_type="movie"))
+    assert route.called
+    assert asset.details["poster_size"] == "w1280"
+    assert asset.details["poster_original_width"] == 2000
+
+
+@respx.mock
+async def test_the_31_inch_panel_downloads_the_original(tmp_path: Path) -> None:
+    setup = Setup(tmp_path)
+    await setup.store.update({"fraimic": {"panel": "315"}})
+    assert setup.provider.target_width() == 1296
+    respx.get(f"{API}/search/movie").respond(json=AMELIE_SEARCH)
+    respx.get(f"{API}/movie/194/images").respond(json=AMELIE_POSTERS)
+    route = respx.get(f"{IMG}/original/fr_fr.jpg").respond(content=png_bytes())
+    try:
+        await setup.provider.fetch(TmdbRequest(query="Amélie", media_type="movie"))
+    finally:
+        await setup.fetcher.aclose()
+    assert route.called

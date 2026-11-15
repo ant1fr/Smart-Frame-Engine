@@ -52,6 +52,11 @@ _VARIANT_WORDS: Final = re.compile(
     r"\b(remix(es)?|live|karaoke|instrumental|tribute|covers?|acoustic|lullab(y|ies)|"
     r"piano|ukulele|8[- ]?bit)\b"
 )
+#: Deezer CDN: ``.../1000x1000-000000-80-0-0.jpg`` (side x side - background - quality).
+_DEEZER_SIZE: Final = re.compile(r"/\d+x\d+-(?P<bg>[0-9a-f]{6})-\d+-0-0\.jpg$")
+DEEZER_XL_SIDE: Final = 1000
+DEEZER_MAX_SIDE: Final = 1400
+CAA_THUMB_SIDE: Final = 1200
 #: Delays before retrying a throttled MusicBrainz request (HTTP 503/429).
 MUSICBRAINZ_RETRY_DELAYS_S: Final = (2.0, 4.0)
 #: Recordings fetched per search: a hit song exists as dozens of equally scored recordings
@@ -136,6 +141,25 @@ def title_match_level(wanted: str | None, candidate: str | None) -> int:
     return 1 if fold(_strip_edition(candidate)) == target else 2
 
 
+def sized_cover_url(match: ArtworkMatch, min_side: int) -> str:
+    """The cover URL at the best quality for a ``min_side`` px slot.
+
+    * Deezer: ``cover_xl`` is a 1000 px JPEG at quality 80. The same CDN pattern serves
+      quality 100 (no compression artifacts, which the eInk sharpening would amplify) and,
+      when the slot is larger, 1400 px.
+    * Cover Art Archive: ``front-1200`` is a real 1200 px rendition; the original upload
+      (any size) is only requested for larger slots.
+
+    Unknown URL shapes are returned unchanged; callers fall back to ``match.url``.
+    """
+    if match.source == "deezer":
+        side = DEEZER_XL_SIDE if min_side <= DEEZER_XL_SIDE else DEEZER_MAX_SIDE
+        return _DEEZER_SIZE.sub(rf"/{side}x{side}-\g<bg>-100-0-0.jpg", match.url)
+    if match.source == "musicbrainz" and min_side > CAA_THUMB_SIDE:
+        return match.url.removesuffix(f"-{CAA_THUMB_SIDE}")
+    return match.url
+
+
 class MinIntervalLimiter:
     """Allows one call per ``interval_s`` seconds (shared by concurrent callers)."""
 
@@ -195,17 +219,33 @@ class ArtworkResolver:
         await self._http.aclose()
 
     # --- Public API -----------------------------------------------------------------------
-    async def find(self, *, title: str, artist: str, album: str | None) -> Artwork | None:
-        """Download the best cover for a track (``None`` when nothing usable was found)."""
+    async def find(
+        self,
+        *,
+        title: str,
+        artist: str,
+        album: str | None,
+        min_side: int = DEEZER_XL_SIDE,
+    ) -> Artwork | None:
+        """Download the best cover for a track (``None`` when nothing usable was found).
+
+        Args:
+            title: Track title.
+            artist: Artist name.
+            album: Album name, if known.
+            min_side: Side (px) of the cover on the panel; the cover is requested at least
+                this large when the service offers it.
+        """
         match = await self.lookup(title=title, artist=artist, album=album)
         if match is None:
             return None
-        try:
-            data = await self._fetcher.fetch(match.url)
-        except ImageFetchError as exc:
-            logger.info("Cover download from %s failed: %s", match.source, exc)
-            return None
-        return Artwork(data, match)
+        urls = list(dict.fromkeys([sized_cover_url(match, min_side), match.url]))
+        for url in urls:
+            try:
+                return Artwork(await self._fetcher.fetch(url), match)
+            except ImageFetchError as exc:
+                logger.info("Cover download from %s failed: %s", match.source, exc)
+        return None
 
     async def lookup(self, *, title: str, artist: str, album: str | None) -> ArtworkMatch | None:
         """The cover URL for a track, from the cache or the services."""

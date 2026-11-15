@@ -207,9 +207,11 @@ class TmdbConfig(_Section):
         description="Preferred poster/metadata language and region, e.g. fr-FR or en-US "
         "(regional posters first, then same language, textless, English)",
     )
-    image_size: Literal["w780", "w1280", "original"] = Field(
-        default="w780",
-        description='Poster resolution to download (original is sharper on the 31.5" panel)',
+    image_size: Literal["auto", "w780", "w1280", "original"] = Field(
+        default="auto",
+        description="Poster resolution to download. auto = the smallest size covering the "
+        "poster's on-panel size that is a real downscale of the original (never a TMDB-side "
+        "upscale), else the original",
     )
     ephemeral_ttl_minutes: int = Field(
         default=180,

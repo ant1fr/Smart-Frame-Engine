@@ -77,6 +77,9 @@ lays the artwork out for the frame (portrait or landscape, 13.3" or 31.5"), alwa
   color sampled from the cover. `style: "vinyl"` slides a record out of the sleeve.
 - **`title_card`** - a clean typographic card, used when no artwork can be found.
 
+Artwork that still has to be enlarged skips the edge-enhance / sharpen chain, which would
+only amplify its blur and JPEG blocks.
+
 Text uses the bundled [Inter](https://rsms.me/inter/) font (never Pillow's bitmap
 default), wraps and shrinks to fit, ends with an ellipsis when it really is too long, and is
 drawn in pure black or white, whichever contrasts more with the background. It is rendered
@@ -383,9 +386,17 @@ curl -X POST .../api/display/tmdb -H 'Content-Type: application/json' \
 **Regional posters.** TMDB tags posters with a language and, for regional variants, a
 country (`fr`/`FR` for France, `fr`/`CA` for Québec). For `fr-FR`, posters are ranked:
 exact language and region, then the same language (any or no region), then textless
-artwork, then English, then anything else; ties go to the best rated
-(`vote_average`, then `vote_count`). Posters are downloaded at `tmdb.image_size`
-(`w780` by default; `original` is sharper on the 31.5" panel).
+artwork, then English, then anything else. Within a tier, posters at least as large as
+their on-panel size come first (a smaller one would have to be enlarged and look soft),
+then the best rated (`vote_average`, then `vote_count`).
+
+**Resolution.** With `tmdb.image_size: auto` (default), the poster's on-panel width is
+computed for the configured panel and orientation (987 px on a 13.3" portrait frame,
+1296 px on a 31.5" one) and the smallest TMDB size that covers it *and* is a real downscale
+of the original is downloaded (`w780` or `w1280`), else the `original`. TMDB silently
+upscales when asked for more pixels than the original has, so a bigger size is never
+requested for a small original. `details.poster_size` and `details.poster_original_width`
+report the choice.
 
 **Fallbacks.** When TMDB is not configured, has no match or fails: `fallback_base64` /
 `fallback_url`, then `./data/assets/tmdb_fallback.png` if you provide one, then a title card
@@ -421,7 +432,10 @@ curl -X POST http://localhost:8000/api/display/now-playing -H 'Content-Type: app
 [Deezer](https://developers.deezer.com/api) public search (1000x1000 `cover_xl`), then
 [MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org)
 (studio albums are preferred over compilations, live albums and videos; requests are
-rate-limited to one per second as MusicBrainz asks). Lookups are cached in memory
+rate-limited to one per second as MusicBrainz asks and retried when it throttles). Covers
+are requested for their on-panel size: Deezer at JPEG quality 100 (1000 px, or 1400 px
+when the cover is displayed larger), the Cover Art Archive at 1200 px (its original when
+larger is needed). Lookups are cached in memory
 (`music.lookup_cache_size`). Without any cover, a typographic card is shown. Disable a
 service with `music.deezer_enabled` / `music.musicbrainz_enabled`.
 
@@ -554,6 +568,11 @@ pip install -e ".[dev]"
 ruff check . && ruff format --check . && mypy app && pytest
 DATA_DIR=./data python -m app      # serve on http://localhost:8000
 ```
+
+`python scripts/template_samples.py` renders 8 movie posters and 8 album covers with the
+templates (composition and dithered panel simulation, plus contact sheets) into
+`data/template-samples/`, using the real TMDB / Deezer / MusicBrainz lookups but never
+the frame. `--panel 315` and `--orientation landscape` preview other frames.
 
 ## Credits
 

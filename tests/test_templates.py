@@ -198,3 +198,29 @@ def test_render_layout_bytes_decodes_untrusted_data() -> None:
 def test_finalize_rejects_a_composition_of_the_wrong_size() -> None:
     with pytest.raises(ValueError, match="expected"):
         finalize(Image.new("RGB", (100, 100)), options())
+
+
+def test_upscaled_artwork_skips_the_edge_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.processor.templates as templates
+
+    calls: list[bool] = []
+    real = templates.enhance
+
+    def spy(image: Image.Image, eink: EinkConfig, *, edge_filters: bool = True) -> Image.Image:
+        calls.append(edge_filters)
+        return real(image, eink, edge_filters=edge_filters)
+
+    monkeypatch.setattr(templates, "enhance", spy)
+    sharp = EinkConfig()  # official: edge filters on
+    compose_layout(Image.new("RGB", (2000, 3000)), PosterLayout(), Canvas((1200, 1600), sharp))
+    assert calls[-1] is True  # downscaled poster: filters applied
+    compose_layout(Image.new("RGB", (600, 900)), PosterLayout(), Canvas((1200, 1600), sharp))
+    assert calls[-1] is False  # enlarged poster: no sharpening of the blur
+    compose_layout(
+        Image.new("RGB", (500, 500)), AlbumLayout(title="x"), Canvas((1200, 1600), sharp)
+    )
+    assert calls[-1] is False
+    compose_layout(
+        Image.new("RGB", (1200, 1200)), AlbumLayout(title="x"), Canvas((1200, 1600), sharp)
+    )
+    assert calls[-1] is True
