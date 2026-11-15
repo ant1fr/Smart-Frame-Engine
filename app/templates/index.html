@@ -172,6 +172,7 @@
             <div class="flex items-center justify-between">
               <h3 class="card-title">Frame</h3>
               <span class="inline-flex items-center gap-1.5 text-xs"><span class="h-2 w-2 rounded-full" :class="frameDot()"></span><span x-text="frameLabel()"></span></span>
+              <button type="button" class="btn !py-0.5 !text-xs ml-auto" x-show="status && status.frame.configured" @click="checkFrame(true)" :disabled="busy.frameCheck">Check now</button>
             </div>
             <template x-if="status">
               <div class="mt-3 space-y-3 text-sm">
@@ -888,7 +889,7 @@
       card: { title: "", subtitle: "", caption: "", accent: "red", ttl: 60 },
       lab: { file: null, template: "none", fit: "", variants: [{ profile: "auto", dither: "auto" }, { profile: "official", dither: "atkinson" }], results: [], frameSize: null },
       config: null, sources: {}, draft: null, accounts: [], mixRows: [], mixView: null,
-      ambient: null, albums: [], people: [], peopleFilter: "", tmdbTest: null, apiKey: { value: "", shown: false, source: "none", regenerable: false },
+      frameAsked: false, ambient: null, albums: [], people: [], peopleFilter: "", tmdbTest: null, apiKey: { value: "", shown: false, source: "none", regenerable: false },
 
       // --- Lifecycle -------------------------------------------------------------------
       async init() {
@@ -953,6 +954,16 @@
       async loadStatus() {
         try { this.status = await this.api("api/status"); } catch (e) { /* keep last */ }
         this.loadAmbient();
+        var f = this.status && this.status.frame;
+        // The engine only polls a continuous-mode frame every 5 minutes: ask once right away.
+        if (f && f.configured && f.telemetry.online === null && !this.frameAsked) { this.frameAsked = true; this.checkFrame(false); }
+      },
+      async checkFrame(report) {
+        this.busy.frameCheck = true;
+        try { await this.api("api/fraimic/info?refresh=true"); if (report) this.toast("Frame reachable"); }
+        catch (e) { if (report) this.toast(e.message || String(e), true); }
+        finally { this.busy.frameCheck = false; }
+        try { this.status = await this.api("api/status"); } catch (e) { /* keep last */ }
       },
       async loadAmbient() { try { this.ambient = await this.api("api/context"); } catch (e) { /* optional */ } },
       ambientFields() {
