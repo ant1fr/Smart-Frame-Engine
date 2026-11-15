@@ -393,7 +393,7 @@ class ArtworkResolver:
             payload = await self._musicbrainz_get(
                 f"{MUSICBRAINZ_API}/release-group/", {"query": query, "fmt": "json", "limit": 5}
             )
-            group = self._pick_release_group(payload.get("release-groups"), artist)
+            group = self._pick_release_group(payload.get("release-groups"), artist, album)
         else:
             query = f"recording:{lucene_quote(title)} AND artist:{lucene_quote(artist)}"
             payload = await self._musicbrainz_get(
@@ -431,17 +431,32 @@ class ArtworkResolver:
         return any(_artist_matches(artist, name) for name in names)
 
     @classmethod
-    def _pick_release_group(cls, groups: object, artist: str) -> tuple[str, str | None] | None:
+    def _pick_release_group(
+        cls, groups: object, artist: str, album: str
+    ) -> tuple[str, str | None] | None:
+        """The best release group for ``album`` by ``artist``.
+
+        Several groups often share the title and the top score ("Thriller" is both the
+        1982 album and a 12-inch single): the requested title first (an edition suffix
+        counts), then the studio album before singles, EPs and compilations, then
+        MusicBrainz's own order.
+        """
         if not isinstance(groups, list):
             return None
-        for group in groups:
+        candidates: list[tuple[int, int, int, dict[str, Any]]] = []
+        for order, group in enumerate(groups):
             if not isinstance(group, dict) or not isinstance(group.get("id"), str):
                 continue
             if int(group.get("score") or 0) < MIN_MUSICBRAINZ_SCORE:
                 continue
-            if cls._credited(group, artist):
-                return group["id"], group.get("title")
-        return None
+            if not cls._credited(group, artist):
+                continue
+            title_level = title_match_level(album, group.get("title"))
+            candidates.append((title_level, cls._release_group_rank(group), order, group))
+        if not candidates:
+            return None
+        best = min(candidates, key=lambda candidate: candidate[:3])[3]
+        return best["id"], best.get("title")
 
     @staticmethod
     def _release_group_rank(group: dict[str, Any]) -> int:
