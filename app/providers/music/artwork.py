@@ -1,10 +1,14 @@
 """High-resolution album cover lookup for now-playing displays (no API key needed).
 
-1. **Deezer** public search API: ``/search/album`` (artist + album) or ``/search`` (artist +
-   track) and the ``cover_xl`` picture (1000x1000).
+1. **Deezer** public search API: ``/search/album`` (artist + album), then ``/search``
+   (artist + track, whose results carry the real album) and the ``cover_xl`` picture
+   (1000x1000). Only a result whose album title matches is accepted at this stage: album
+   searches are often flooded with covers, singles and remix EPs of the same name.
 2. **MusicBrainz** release-group search (rate-limited to one request per second as their
-   policy requires, with a descriptive User-Agent) and the matching **Cover Art Archive**
-   front cover (``front-1200``; the archive answers with a redirect to its storage).
+   policy requires, with a descriptive User-Agent, and retried with a backoff when the
+   service throttles) and the matching **Cover Art Archive** front cover (``front-1200``;
+   the archive answers with a redirect to its storage).
+3. The best approximate Deezer result, as a last resort.
 
 Lookups are cached in memory (including "no cover" answers, but never transient errors),
 so Home Assistant attribute updates do not hammer the services. The resolver never
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -38,6 +43,17 @@ READ_TIMEOUT_S: Final = 10.0
 SEARCH_LIMIT: Final = 10
 #: Minimum MusicBrainz search score (0-100) to accept a release group.
 MIN_MUSICBRAINZ_SCORE: Final = 80
+_TRAILING_PARENTHESIS: Final = re.compile(r"\s*[(\[]([^()\[\]]*)[)\]]\s*$")
+_EDITION_WORDS: Final = re.compile(
+    r"\b(remaster(ed)?|deluxe|edition|anniversary|expanded|mono|stereo|bonus|version|"
+    r"\d{4} mix)\b"
+)
+_VARIANT_WORDS: Final = re.compile(
+    r"\b(remix(es)?|live|karaoke|instrumental|tribute|covers?|acoustic|lullab(y|ies)|"
+    r"piano|ukulele|8[- ]?bit)\b"
+)
+#: Delays before retrying a throttled MusicBrainz request (HTTP 503/429).
+MUSICBRAINZ_RETRY_DELAYS_S: Final = (2.0, 4.0)
 #: Recordings fetched per search: a hit song exists as dozens of equally scored recordings
 #: (live, compilations, DJ mixes); the studio album often is not among the first five.
 RECORDING_SEARCH_LIMIT: Final = 25
@@ -50,6 +66,10 @@ ArtworkSource = Literal["deezer", "musicbrainz"]
 
 class ArtworkLookupError(Exception):
     """A transient lookup failure (network, rate limit): the answer must not be cached."""
+
+
+class ArtworkRateLimitError(ArtworkLookupError):
+    """The service throttled the request (HTTP 429/503)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,16 +96,44 @@ def lucene_quote(value: str) -> str:
     return f'"{escaped}"'
 
 
-def _same(a: str | None, b: str | None) -> bool:
-    return bool(a) and bool(b) and fold(a or "") == fold(b or "")
+def artist_match_level(wanted: str, candidate: str | None) -> int | None:
+    """0 = same artist, 1 = one name contains the other ("Queen" / "Queen + Bowie", but
+    also tribute acts), ``None`` = different artist."""
+    if not candidate:
+        return None
+    a, b = fold(wanted), fold(candidate)
+    if not a or not b:
+        return None
+    if a == b:
+        return 0
+    return 1 if a in b or b in a else None
 
 
 def _artist_matches(wanted: str, candidate: str | None) -> bool:
-    """Exact folded match, or one name containing the other ("Queen" / "Queen + Bowie")."""
-    if not candidate:
-        return False
-    a, b = fold(wanted), fold(candidate)
-    return bool(a) and bool(b) and (a == b or a in b or b in a)
+    return artist_match_level(wanted, candidate) is not None
+
+
+def _strip_edition(title: str) -> str:
+    """``title`` without trailing edition suffixes: "Abbey Road (Remastered 2009)"."""
+    while (suffix := _TRAILING_PARENTHESIS.search(title)) is not None:
+        inside = suffix.group(1).casefold()
+        if not _EDITION_WORDS.search(inside) or _VARIANT_WORDS.search(inside):
+            break
+        title = title[: suffix.start()]
+    return title
+
+
+def title_match_level(wanted: str | None, candidate: str | None) -> int:
+    """0 = same title, 1 = same title with an edition suffix, 2 = something else.
+
+    Remixes, live albums, tributes, karaoke or cover versions are never editions.
+    """
+    if not wanted or not candidate:
+        return 2
+    target = fold(wanted)
+    if fold(candidate) == target:
+        return 0
+    return 1 if fold(_strip_edition(candidate)) == target else 2
 
 
 class MinIntervalLimiter:
@@ -111,6 +159,12 @@ class MinIntervalLimiter:
                 delay = self._last + self._interval - self._clock()
                 if delay > 0:
                     await self._sleep(delay)
+            self._last = self._clock()
+
+    async def backoff(self, seconds: float) -> None:
+        """Hold every caller for ``seconds`` (the service asked us to slow down)."""
+        async with self._lock:
+            await self._sleep(seconds)
             self._last = self._clock()
 
 
@@ -175,11 +229,13 @@ class ArtworkResolver:
     async def _search(self, *, title: str, artist: str, album: str | None) -> ArtworkMatch | None:
         config = self._config_store.config.music
         transient = False
+        approximate: ArtworkMatch | None = None
         if config.deezer_enabled:
             try:
-                match = await self._deezer(title=title, artist=artist, album=album)
-                if match is not None:
+                match, exact = await self._deezer(title=title, artist=artist, album=album)
+                if match is not None and exact:
                     return match
+                approximate = match
             except ArtworkLookupError as exc:
                 logger.info("Deezer cover lookup failed: %s", exc)
                 transient = True
@@ -191,6 +247,8 @@ class ArtworkResolver:
             except ArtworkLookupError as exc:
                 logger.info("MusicBrainz cover lookup failed: %s", exc)
                 transient = True
+        if approximate is not None:
+            return approximate
         if transient:
             raise ArtworkLookupError("no cover found and a service failed")
         return None
@@ -201,7 +259,7 @@ class ArtworkResolver:
         except httpx.HTTPError as exc:
             raise ArtworkLookupError(f"{service} unreachable ({type(exc).__name__})") from None
         if response.status_code in {429, 503}:
-            raise ArtworkLookupError(f"{service} rate limit (HTTP {response.status_code})")
+            raise ArtworkRateLimitError(f"{service} rate limit (HTTP {response.status_code})")
         if response.status_code != 200:
             raise ArtworkLookupError(f"{service} answered HTTP {response.status_code}")
         try:
@@ -212,7 +270,14 @@ class ArtworkResolver:
             raise ArtworkLookupError(f"{service} returned an unexpected payload")
         return payload
 
-    async def _deezer(self, *, title: str, artist: str, album: str | None) -> ArtworkMatch | None:
+    async def _deezer(
+        self, *, title: str, artist: str, album: str | None
+    ) -> tuple[ArtworkMatch | None, bool]:
+        """The Deezer cover and whether its album title matches exactly.
+
+        Without a requested album, any track result by the artist counts as exact.
+        """
+        approximate: ArtworkMatch | None = None
         if album:
             payload = await self._get_json(
                 f"{DEEZER_API}/search/album",
@@ -220,16 +285,20 @@ class ArtworkResolver:
                 "Deezer",
             )
             self._check_deezer_error(payload)
-            match = self._pick_deezer_album(payload.get("data"), artist, album)
-            if match is not None:
-                return match
+            found = self._pick_deezer(payload.get("data"), artist, album, track_results=False)
+            if found is not None and found[1]:
+                return found[0], True
+            approximate = found[0] if found else None
         payload = await self._get_json(
             f"{DEEZER_API}/search",
             {"q": f'artist:"{artist}" track:"{title}"', "limit": SEARCH_LIMIT},
             "Deezer",
         )
         self._check_deezer_error(payload)
-        return self._pick_deezer_track(payload.get("data"), artist, album)
+        found = self._pick_deezer(payload.get("data"), artist, album, track_results=True)
+        if found is not None and found[1]:
+            return found[0], True
+        return approximate or (found[0] if found else None), False
 
     @staticmethod
     def _check_deezer_error(payload: dict[str, Any]) -> None:
@@ -239,74 +308,57 @@ class ArtworkResolver:
             raise ArtworkLookupError(f"Deezer error {error.get('code')}: {error.get('message')}")
 
     @staticmethod
-    def _pick_deezer_album(data: object, artist: str, album: str) -> ArtworkMatch | None:
-        if not isinstance(data, list):
-            return None
-        candidates = [
-            item
-            for item in data
-            if isinstance(item, dict)
-            and isinstance(item.get("cover_xl"), str)
-            and _artist_matches(artist, (item.get("artist") or {}).get("name"))
-        ]
-        candidates.sort(key=lambda item: not _same(item.get("title"), album))
-        if not candidates:
-            return None
-        best = candidates[0]
-        return ArtworkMatch(
-            url=best["cover_xl"],
-            source="deezer",
-            album=best.get("title"),
-            artist=(best.get("artist") or {}).get("name"),
-        )
+    def _pick_deezer(
+        data: object, artist: str, album: str | None, *, track_results: bool
+    ) -> tuple[ArtworkMatch, bool] | None:
+        """The best Deezer album (or track's album) and whether it is a sure match.
 
-    @staticmethod
-    def _pick_deezer_track(data: object, artist: str, album: str | None) -> ArtworkMatch | None:
+        Ranked by artist (exact name before a name merely containing it, e.g. a tribute
+        act), then album title (exact, then the same title with an edition suffix), then
+        real albums before EPs and singles. A sure match has the exact artist and the exact
+        (or edition) title; without a requested album, the exact artist is enough.
+        """
         if not isinstance(data, list):
             return None
-        candidates = []
+        ranked: list[tuple[tuple[int, int, bool], dict[str, Any]]] = []
         for item in data:
             if not isinstance(item, dict):
                 continue
-            item_album = item.get("album") or {}
-            if not isinstance(item_album.get("cover_xl"), str):
+            record = (item.get("album") or {}) if track_results else item
+            if not isinstance(record, dict) or not isinstance(record.get("cover_xl"), str):
                 continue
-            if not _artist_matches(artist, (item.get("artist") or {}).get("name")):
+            artist_rank = artist_match_level(artist, (item.get("artist") or {}).get("name"))
+            if artist_rank is None:
                 continue
-            candidates.append(item)
-        if album:
-            candidates.sort(
-                key=lambda item: not _same((item.get("album") or {}).get("title"), album)
-            )
-        if not candidates:
+            title_rank = title_match_level(album, record.get("title")) if album else 0
+            is_album = (record.get("record_type") or item.get("record_type") or "album") == "album"
+            ranked.append(((artist_rank, title_rank, not is_album), item))
+        if not ranked:
             return None
-        best = candidates[0]
-        return ArtworkMatch(
-            url=best["album"]["cover_xl"],
+        (artist_rank, title_rank, _), best = min(ranked, key=lambda pair: pair[0])
+        record = (best.get("album") or {}) if track_results else best
+        match = ArtworkMatch(
+            url=record["cover_xl"],
             source="deezer",
-            album=best["album"].get("title"),
+            album=record.get("title"),
             artist=(best.get("artist") or {}).get("name"),
         )
+        return match, artist_rank == 0 and title_rank <= 1
 
     async def _musicbrainz(
         self, *, title: str, artist: str, album: str | None
     ) -> ArtworkMatch | None:
         if album:
             query = f"releasegroup:{lucene_quote(album)} AND artist:{lucene_quote(artist)}"
-            await self._limiter.wait()
-            payload = await self._get_json(
-                f"{MUSICBRAINZ_API}/release-group/",
-                {"query": query, "fmt": "json", "limit": 5},
-                "MusicBrainz",
+            payload = await self._musicbrainz_get(
+                f"{MUSICBRAINZ_API}/release-group/", {"query": query, "fmt": "json", "limit": 5}
             )
             group = self._pick_release_group(payload.get("release-groups"), artist)
         else:
             query = f"recording:{lucene_quote(title)} AND artist:{lucene_quote(artist)}"
-            await self._limiter.wait()
-            payload = await self._get_json(
+            payload = await self._musicbrainz_get(
                 f"{MUSICBRAINZ_API}/recording/",
                 {"query": query, "fmt": "json", "limit": RECORDING_SEARCH_LIMIT},
-                "MusicBrainz",
             )
             group = self._group_from_recordings(payload.get("recordings"), artist)
         if group is None:
@@ -318,6 +370,19 @@ class ArtworkResolver:
             album=group_title,
             artist=artist,
         )
+
+    async def _musicbrainz_get(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        """A rate-limited MusicBrainz request, retried with a backoff when throttled."""
+        for delay in (*MUSICBRAINZ_RETRY_DELAYS_S, None):
+            await self._limiter.wait()
+            try:
+                return await self._get_json(url, params, "MusicBrainz")
+            except ArtworkRateLimitError:
+                if delay is None:
+                    raise
+                logger.debug("MusicBrainz throttled the request; retrying in %.0f s", delay)
+                await self._limiter.backoff(delay)
+        raise AssertionError("unreachable")  # pragma: no cover
 
     @staticmethod
     def _credited(item: dict[str, Any], artist: str) -> bool:
