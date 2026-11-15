@@ -167,6 +167,58 @@ async def test_musicbrainz_recording_search_without_an_album(setup: Setup) -> No
 
 
 @respx.mock
+async def test_recording_search_prefers_the_studio_album_over_videos_and_compilations(
+    setup: Setup,
+) -> None:
+    respx.get(f"{DEEZER}/search").respond(json={"data": []})
+    respx.get(f"{MB}/recording/").respond(
+        json={
+            "recordings": [
+                {
+                    "score": 100,
+                    "artist-credit": [{"name": "Daft Punk"}],
+                    "releases": [
+                        {
+                            "release-group": {
+                                "id": "video",
+                                "title": "D.A.F.T.",
+                                "primary-type": "Other",
+                            }
+                        },
+                        {
+                            "release-group": {
+                                "id": "best-of",
+                                "title": "Musique",
+                                "primary-type": "Album",
+                                "secondary-types": ["Compilation"],
+                            }
+                        },
+                        {
+                            "release-group": {
+                                "id": "single",
+                                "title": "Around the World",
+                                "primary-type": "Single",
+                            }
+                        },
+                        {
+                            "release-group": {
+                                "id": "homework",
+                                "title": "Homework",
+                                "primary-type": "Album",
+                            }
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    match = await setup.resolver.lookup(title="Around the World", artist="Daft Punk", album=None)
+    assert match is not None
+    assert match.album == "Homework"
+    assert match.url.endswith("/release-group/homework/front-1200")
+
+
+@respx.mock
 async def test_nothing_found_returns_none_and_is_cached(setup: Setup) -> None:
     deezer = respx.get(f"{DEEZER}/search/album").respond(json={"data": []})
     respx.get(f"{DEEZER}/search").respond(json={"data": []})

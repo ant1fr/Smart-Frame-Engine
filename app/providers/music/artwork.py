@@ -38,6 +38,11 @@ READ_TIMEOUT_S: Final = 10.0
 SEARCH_LIMIT: Final = 10
 #: Minimum MusicBrainz search score (0-100) to accept a release group.
 MIN_MUSICBRAINZ_SCORE: Final = 80
+#: Recordings fetched per search: a hit song exists as dozens of equally scored recordings
+#: (live, compilations, DJ mixes); the studio album often is not among the first five.
+RECORDING_SEARCH_LIMIT: Final = 25
+#: Preferred release-group primary types for a recording's cover (best first).
+PRIMARY_TYPE_RANK: Final[dict[str, int]] = {"album": 0, "single": 1, "ep": 1}
 _LUCENE_SPECIAL: Final = '+-&|!(){}[]^"~*?:\\/'
 
 ArtworkSource = Literal["deezer", "musicbrainz"]
@@ -300,7 +305,7 @@ class ArtworkResolver:
             await self._limiter.wait()
             payload = await self._get_json(
                 f"{MUSICBRAINZ_API}/recording/",
-                {"query": query, "fmt": "json", "limit": 5},
+                {"query": query, "fmt": "json", "limit": RECORDING_SEARCH_LIMIT},
                 "MusicBrainz",
             )
             group = self._group_from_recordings(payload.get("recordings"), artist)
@@ -333,12 +338,26 @@ class ArtworkResolver:
                 return group["id"], group.get("title")
         return None
 
+    @staticmethod
+    def _release_group_rank(group: dict[str, Any]) -> int:
+        """Lower is better: studio albums, then singles/EPs, then anything else.
+
+        A recording appears on many releases (compilations, live albums, videos); the
+        original album cover is the one people recognize.
+        """
+        primary = str(group.get("primary-type") or "").casefold()
+        secondary = group.get("secondary-types") or []
+        rank = PRIMARY_TYPE_RANK.get(primary, len(PRIMARY_TYPE_RANK))
+        return rank * 2 + (1 if secondary else 0)
+
     @classmethod
     def _group_from_recordings(
         cls, recordings: object, artist: str
     ) -> tuple[str, str | None] | None:
         if not isinstance(recordings, list):
             return None
+        best: tuple[int, int, str, str | None] | None = None
+        order = 0
         for recording in recordings:
             if not isinstance(recording, dict):
                 continue
@@ -348,6 +367,15 @@ class ArtworkResolver:
                 continue
             for release in recording.get("releases") or []:
                 group = release.get("release-group") if isinstance(release, dict) else None
-                if isinstance(group, dict) and isinstance(group.get("id"), str):
-                    return group["id"], group.get("title") or release.get("title")
-        return None
+                if not isinstance(group, dict) or not isinstance(group.get("id"), str):
+                    continue
+                candidate = (
+                    cls._release_group_rank(group),
+                    order,
+                    group["id"],
+                    group.get("title") or release.get("title"),
+                )
+                order += 1
+                if best is None or candidate[:2] < best[:2]:
+                    best = candidate
+        return (best[2], best[3]) if best is not None else None
