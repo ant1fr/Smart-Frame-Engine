@@ -6,7 +6,14 @@ import re
 from datetime import date
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 TmdbMediaType = Literal["movie", "tv", "multi"]
 ResultMediaType = Literal["movie", "tv"]
@@ -112,3 +119,60 @@ class TmdbImage(BaseModel):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+
+MAX_FALLBACK_URL_LENGTH: Final = 4096
+#: Upper bound of a base64 fallback picture (the decoded size is checked separately).
+MAX_FALLBACK_BASE64_LENGTH: Final = 40_000_000
+
+
+class TmdbDisplayRequest(TmdbRequest):
+    """Body of ``POST /api/display/tmdb`` (and of replayable ``tmdb`` rules)."""
+
+    query: str = Field(
+        min_length=1,
+        max_length=200,
+        validation_alias=AliasChoices("query", "title"),
+        description="Movie or series title ('title' is accepted as an alias)",
+    )
+    fallback_url: str | None = Field(
+        default=None,
+        max_length=MAX_FALLBACK_URL_LENGTH,
+        description="Picture used when TMDB has no match, e.g. the absolute URL of the Home "
+        "Assistant media_player entity_picture",
+    )
+    fallback_base64: str | None = Field(
+        default=None,
+        max_length=MAX_FALLBACK_BASE64_LENGTH,
+        description="Same as fallback_url, as base64 (or a data: URI); tried first",
+    )
+    push_to_fraimic: bool = Field(
+        default=True, description="Send to the frame; false only renders a preview"
+    )
+    ephemeral: bool = Field(
+        default=True,
+        description="Temporary poster: the previous image comes back after ttl_minutes or "
+        "DELETE /api/queue/ephemeral, and the request is not replayed by POST /api/refresh",
+    )
+    ttl_minutes: int | None = Field(
+        default=None,
+        ge=1,
+        le=1440,
+        description="Ephemeral lifetime (default tmdb.ephemeral_ttl_minutes)",
+    )
+    hold_minutes: int | None = Field(
+        default=None,
+        ge=1,
+        le=10080,
+        description="Protect the poster from scheduled refreshes (default tmdb.hold_minutes)",
+    )
+
+    def search(self) -> TmdbRequest:
+        """The TMDB lookup part of the request."""
+        return TmdbRequest(
+            query=self.query,
+            media_type=self.media_type,
+            year=self.year,
+            season=self.season,
+            language=self.language,
+        )

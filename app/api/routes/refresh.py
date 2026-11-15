@@ -22,7 +22,7 @@ class RefreshResult(BaseModel):
     """Outcome of a manual refresh."""
 
     reason: Literal["manual"] = "manual"
-    rule_kind: str = Field(description="Source of the replayed rule (immich, media, url)")
+    rule_kind: str = Field(description="Source of the replayed rule (immich, tmdb)")
     rule_source: RuleSource = Field(
         description="pinned = scheduler.source_rule; smart_mix = the weighted playlist; "
         "last = the last manual display request"

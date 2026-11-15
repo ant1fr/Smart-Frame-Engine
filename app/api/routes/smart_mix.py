@@ -26,6 +26,7 @@ from app.api.routes.immich import show_immich
 from app.core.auth import api_key_scheme
 from app.core.config_models import FitMode, SourceKind, SourceRule
 from app.providers.immich.models import ImmichDisplayRequest, MatchMode, OnThisDay
+from app.providers.tmdb.models import TmdbDisplayRequest
 from app.services.display import DisplayResult
 from app.services.scheduler import ContextView, validation_summary
 from app.services.smart_mix import DEFAULT_CONTEXT_WEIGHT, MixContext
@@ -155,6 +156,13 @@ class ContextResponse(ContextView):
     )
 
 
+#: Request models validating the params of a boosted rule, per source kind.
+_RULE_MODELS: dict[str, type[BaseModel]] = {
+    "immich": ImmichDisplayRequest,
+    "tmdb": TmdbDisplayRequest,
+}
+
+
 def _rule_from(body: ContextRequest) -> SourceRule:
     params: dict[str, JsonValue] = dict(body.params)
     shorthand = bool(body.queries or body.persons or body.on_this_day)
@@ -171,9 +179,10 @@ def _rule_from(body: ContextRequest) -> SourceRule:
         params["on_this_day"] = {}
     if not params:
         raise HTTPException(status_code=422, detail="Give params or queries for the boost")
-    if body.kind == "immich":
+    model = _RULE_MODELS.get(body.kind)
+    if model is not None:
         try:
-            ImmichDisplayRequest.model_validate(params)
+            model.model_validate(params)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=validation_summary(exc)) from exc
     return SourceRule(kind=body.kind, params=params)

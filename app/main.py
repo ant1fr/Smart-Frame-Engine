@@ -28,6 +28,8 @@ from app.api.routes import queue as queue_routes
 from app.api.routes import refresh as refresh_routes
 from app.api.routes import smart_mix as smart_mix_routes
 from app.api.routes import system as system_routes
+from app.api.routes import tmdb as tmdb_routes
+from app.clients.http_images import ImageFetcher
 from app.core.auth import APIKeyMiddleware
 from app.core.config_models import RuntimeConfig
 from app.core.config_store import ConfigStore
@@ -38,11 +40,12 @@ from app.core.proxy import RootPathMiddleware
 from app.core.security import URLPolicy
 from app.core.settings import EnvSettings, get_env_settings
 from app.providers.immich import ImmichGateway, ImmichProvider, PeopleDirectory
+from app.providers.tmdb import PosterResolver, TmdbProvider
 from app.services.current_image import CurrentImageStore
 from app.services.delivery import DeliveryService
 from app.services.display import DisplayService
 from app.services.ephemeral import EphemeralService
-from app.services.scheduler import SchedulerService, immich_runner
+from app.services.scheduler import SchedulerService, immich_runner, tmdb_runner
 
 logger = logging.getLogger(__name__)
 
@@ -117,10 +120,16 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             history_store,
             max_bytes=settings.max_upload_bytes,
         )
+        image_fetcher = ImageFetcher(url_policy, settings.max_upload_bytes)
+        tmdb = TmdbProvider(config_store, image_fetcher)
+        poster_resolver = PosterResolver(tmdb, image_fetcher, config_store, settings.assets_dir)
         scheduler = SchedulerService(
             settings.scheduler_state_path,
             config_store,
-            {"immich": immich_runner(immich, display)},
+            {
+                "immich": immich_runner(immich, display),
+                "tmdb": tmdb_runner(poster_resolver, display),
+            },
             has_pending=lambda: delivery.pending is not None,
         )
         scheduler.load()
@@ -141,6 +150,8 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         app.state.immich_provider = immich
         app.state.scheduler_service = scheduler
         app.state.ephemeral_service = ephemeral
+        app.state.image_fetcher = image_fetcher
+        app.state.poster_resolver = poster_resolver
 
         await ephemeral.start()  # before the delivery worker can drop an expired image
         await delivery.start()
@@ -164,6 +175,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
             await scheduler.stop()
             await ephemeral.stop()
             await delivery.stop()
+            await image_fetcher.aclose()
             logger.info("Smart Frame Engine stopped")
 
     app = FastAPI(
@@ -212,6 +224,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
     app.include_router(image_routes.router)
     app.include_router(display_routes.router)
     app.include_router(immich_routes.display_router)
+    app.include_router(tmdb_routes.display_router)
     app.include_router(immich_routes.router)
     app.include_router(refresh_routes.router)
     app.include_router(smart_mix_routes.display_router)

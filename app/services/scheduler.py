@@ -49,6 +49,8 @@ from app.core.json_store import atomic_write_json, read_json
 from app.core.security import InvalidImageError
 from app.providers.base import ProviderError
 from app.providers.immich import ImmichDisplayRequest, ImmichProvider
+from app.providers.tmdb import PosterResolver
+from app.providers.tmdb.models import TmdbDisplayRequest
 from app.services.display import DisplayResult, DisplayService
 from app.services.schedule import QuietWindow, in_quiet, next_run_at
 from app.services.smart_mix import MixCandidate, MixContext, SmartMixResolver
@@ -67,7 +69,15 @@ RuleRunner = Callable[[SourceRule], Awaitable[DisplayResult]]
 
 #: Request fields that describe one action rather than the selection; never replayed.
 NON_REPLAYED_FIELDS: Final = frozenset(
-    {"push_to_fraimic", "ignore_history", "ephemeral", "hold_minutes"}
+    {
+        "push_to_fraimic",
+        "ignore_history",
+        "ephemeral",
+        "hold_minutes",
+        "ttl_minutes",
+        "ttl_seconds",
+        "fallback_base64",
+    }
 )
 
 
@@ -787,5 +797,35 @@ def immich_runner(provider: ImmichProvider, display: DisplayService) -> RuleRunn
             raise InvalidRuleError(f"Invalid immich rule: {validation_summary(exc)}") from None
         asset = await provider.fetch(request)
         return await display.display_asset(asset, fit=request.fit, push=True)
+
+    return run
+
+
+def tmdb_rule(request: TmdbDisplayRequest) -> SourceRule:
+    """The replayable rule of a TMDB display request (only the fields it set).
+
+    ``fallback_base64`` is never stored (it can be megabytes of picture data).
+    """
+    params = request.model_dump(mode="json", exclude_unset=True, exclude=set(NON_REPLAYED_FIELDS))
+    return SourceRule(kind="tmdb", params=params)
+
+
+def tmdb_runner(resolver: PosterResolver, display: DisplayService) -> RuleRunner:
+    """Replay ``tmdb`` rules: show the poster again as a regular (non-ephemeral) image.
+
+    A Smart Mix entry such as ``{"kind": "tmdb", "params": {"query": "Amélie"}}`` thus puts a
+    favourite poster into the rotation like any photo.
+    """
+
+    async def run(rule: SourceRule) -> DisplayResult:
+        params = {
+            key: value for key, value in rule.params.items() if key not in NON_REPLAYED_FIELDS
+        }
+        try:
+            request = TmdbDisplayRequest.model_validate(params)
+        except ValidationError as exc:
+            raise InvalidRuleError(f"Invalid tmdb rule: {validation_summary(exc)}") from None
+        asset = await resolver.resolve(request.search(), fallback_url=request.fallback_url)
+        return await display.display_asset(asset, push=True)
 
     return run
