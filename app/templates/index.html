@@ -21,6 +21,11 @@
     .pixelated { image-rendering: pixelated; }
     .checker { background-image: linear-gradient(45deg, rgba(148,163,184,.15) 25%, transparent 25%), linear-gradient(-45deg, rgba(148,163,184,.15) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(148,163,184,.15) 75%), linear-gradient(-45deg, transparent 75%, rgba(148,163,184,.15) 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
     input[type=range] { accent-color: #2563eb; }
+    /* Phones: a bare grid has one auto-sized column, which a long unbroken title or URL stretches
+       past the viewport. Zero-specificity rules, so every grid-cols-* utility still wins. */
+    :where(.grid) { grid-template-columns: minmax(0, 1fr); }
+    :where(.grid) > :where(*) { min-width: 0; }
+    body { overflow-x: clip; overflow-wrap: anywhere; }
   </style>
 </head>
 <body class="min-h-full bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased">
@@ -133,7 +138,7 @@
             </div>
             <template x-if="ephemeralActive()">
               <div class="mt-3 space-y-3">
-                <p class="text-sm"><span class="font-medium" x-text="status.ephemeral.title || status.ephemeral.source"></span>
+                <p class="text-sm break-words"><span class="font-medium" x-text="status.ephemeral.title || status.ephemeral.source"></span>
                   <span class="text-slate-500" x-show="status.ephemeral.pending"> (waiting for the frame)</span></p>
                 <div x-show="status.ephemeral.expires_at">
                   <p class="text-xs text-slate-500 dark:text-slate-400">Previous image returns in</p>
