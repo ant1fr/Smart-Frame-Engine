@@ -88,7 +88,7 @@ def _layout(
     if template == "poster":
         return PosterLayout()
     if template == "album":
-        return AlbumLayout(title=title or "Title", artist=subtitle, album=caption, style=style)
+        return AlbumLayout(title=title or None, artist=subtitle, album=caption, style=style)
     if template == "title_card":
         return TitleCardLayout(title=title or "Title card", subtitle=subtitle, caption=caption)
     return None

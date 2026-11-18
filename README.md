@@ -608,12 +608,23 @@ curl -X POST http://localhost:8080/api/display/now-playing -H 'Content-Type: app
 
 | Request field | Meaning |
 | --- | --- |
-| `title`, `artist`, `album` | Track details (`media_title`, `media_artist`, `media_album_name` in Home Assistant) |
+| `title`, `artist`, `album` | Track details (`media_title`, `media_artist`, `media_album_name` in Home Assistant). `artist` is required, plus `title` or `album` |
+| `show_title` | Print the track title on the cover (default `music.show_track_title`, off). See below |
 | `artwork_url`, `artwork_base64` | Cover provided by the player (base64 is tried first) |
 | `enrich_artwork` | When no usable cover was provided, look one up (default true; also `music.enrich_artwork`) |
 | `style` | `sleeve` or `vinyl` (default `music.default_style`) |
 | `duration_seconds`, `position_seconds`, `ttl_seconds` | When the cover expires (see below) |
 | `ephemeral`, `hold_minutes`, `push_to_fraimic` | As for posters |
+
+**Track title and deduplication.** By default the cover shows the artist and the album, not
+the track title (`music.show_track_title`, or `show_title` per request). The title only
+counts in the picture's identity when it is printed, so while an album plays, every track
+resolves to the *same* picture: the call returns `deduplicated: true`, nothing is sent to
+the frame (no e-ink refresh) and only the expiry is extended. The frame refreshes when the
+album, the artist or the style changes. Without an album, the title is always printed (it is
+the only thing that tells tracks apart). Keep calling the endpoint on every track change.
+**Breaking change:** before, each track was a new picture with its title; set
+`music.show_track_title: true` to get that back.
 
 **Cover lookup.** No API key is needed: the
 [Deezer](https://developers.deezer.com/api) public search (1000x1000 `cover_xl`), then
@@ -742,8 +753,8 @@ automation:
       - service: rest_command.frame_cancel_ephemeral
 ```
 
-The now-playing call is deduplicated, so the `media_title` trigger only re-renders when the
-track really changes. A deep-sleeping frame wakes up to the right picture: covers whose
+The now-playing call is deduplicated, so the `media_title` trigger only refreshes the frame
+when the album changes (every track with the title printed, if you enable `show_track_title`). A deep-sleeping frame wakes up to the right picture: covers whose
 song has ended are dropped from the queue, and the previous photo comes back.
 
 ## Development

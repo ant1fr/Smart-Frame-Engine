@@ -74,7 +74,7 @@ class PosterLayout:
 class AlbumLayout:
     """Square cover with a title / artist / album typography block."""
 
-    title: str
+    title: str | None = None
     artist: str | None = None
     album: str | None = None
     style: AlbumStyle = "sleeve"
@@ -277,7 +277,7 @@ def _album_text(layout: AlbumLayout, width: int, unit: int, scale: float) -> _Te
         return max(8, round(unit * fraction * scale))
 
     title = fit_text(
-        layout.title,
+        layout.title or "",
         weight="bold",
         max_width=width,
         max_lines=2,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 AlbumStyleName = Literal["sleeve", "vinyl"]
 
@@ -18,7 +18,11 @@ class NowPlayingRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(min_length=1, max_length=300, description="Track title (media_title)")
+    title: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Track title (media_title). Optional when an album is given",
+    )
     artist: str = Field(min_length=1, max_length=300, description="Artist (media_artist)")
     album: str | None = Field(
         default=None, max_length=300, description="Album name (media_album_name)"
@@ -32,6 +36,12 @@ class NowPlayingRequest(BaseModel):
         default=None,
         max_length=MAX_ARTWORK_BASE64_LENGTH,
         description="Cover as base64 (or a data: URI); tried before artwork_url",
+    )
+    show_title: bool | None = Field(
+        default=None,
+        description="Print the track title on the cover (default music.show_track_title). "
+        "Without it, every track of the same album shares one picture, so the frame is only "
+        "refreshed when the album changes. Ignored (title shown) when there is no album",
     )
     enrich_artwork: bool = Field(
         default=True,
@@ -76,9 +86,22 @@ class NowPlayingRequest(BaseModel):
         cleaned = " ".join(value.split())
         return cleaned or None
 
-    @field_validator("title", "artist")
+    @field_validator("artist")
     @classmethod
     def _required(cls, value: str | None) -> str:
         if not value:
             raise ValueError("must not be blank")
         return value
+
+    @model_validator(mode="after")
+    def _identifiable(self) -> NowPlayingRequest:
+        if not self.title and not self.album:
+            raise ValueError("give a title or an album")
+        return self
+
+    def shows_title(self, default: bool) -> bool:
+        """Whether the title is printed (always when no album tells the tracks apart)."""
+        if not self.title:
+            return False
+        wanted = default if self.show_title is None else self.show_title
+        return wanted or not self.album

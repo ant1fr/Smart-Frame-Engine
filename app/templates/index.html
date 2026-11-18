@@ -333,20 +333,23 @@
         <div class="card space-y-4">
           <div>
             <h3 class="card-title">Now Playing</h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Album cover (Deezer, then MusicBrainz) with the track underneath.</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Album cover (Deezer, then MusicBrainz) with the artist and album underneath. The track title is optional: without it, every track of an album is the same picture and the frame does not refresh between tracks.</p>
           </div>
           <div class="grid sm:grid-cols-2 gap-3">
-            <label class="field"><span>Track</span><input class="input" x-model="music.title" placeholder="Billie Jean" maxlength="300"></label>
+            <label class="field"><span>Track</span><input class="input" x-model="music.title" placeholder="Billie Jean (optional with an album)" maxlength="300"></label>
             <label class="field"><span>Artist</span><input class="input" x-model="music.artist" placeholder="Michael Jackson" maxlength="300"></label>
             <label class="field"><span>Album</span><input class="input" x-model="music.album" placeholder="Thriller" maxlength="300"></label>
             <label class="field"><span>Style</span>
               <select class="input" x-model="music.style"><option value="sleeve">Sleeve</option><option value="vinyl">Vinyl</option></select>
             </label>
+            <label class="field"><span>Track title on the cover</span>
+              <select class="input" x-model="music.showTitle"><option value="">Default (Settings)</option><option value="yes">Show</option><option value="no">Hide</option></select>
+            </label>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="music.enrich" class="rounded"> Look up the cover</label>
-            <button type="button" class="btn ml-auto" @click="musicShow(false)" :disabled="!!(busy.render || !music.title || !music.artist)">Preview</button>
-            <button type="button" class="btn-primary" @click="musicShow(true)" :disabled="!!(busy.render || !music.title || !music.artist)">Send to frame</button>
+            <button type="button" class="btn ml-auto" @click="musicShow(false)" :disabled="!!(busy.render || !(music.title || music.album) || !music.artist)">Preview</button>
+            <button type="button" class="btn-primary" @click="musicShow(true)" :disabled="!!(busy.render || !(music.title || music.album) || !music.artist)">Send to frame</button>
           </div>
         </div>
 
@@ -885,7 +888,7 @@
       now: Date.now(), toasts: [], zoomed: null, zoomActual: false,
       busy: {}, preview: null, previewStamp: 0,
       tmdb: { query: "", mediaType: "multi", results: [], selected: null, searched: false, ttl: 180 },
-      music: { title: "", artist: "", album: "", style: "sleeve", enrich: true },
+      music: { title: "", artist: "", album: "", style: "sleeve", showTitle: "", enrich: true },
       card: { title: "", subtitle: "", caption: "", accent: "red", ttl: 60 },
       lab: { file: null, template: "none", fit: "", variants: [{ profile: "auto", dither: "auto" }, { profile: "official", dither: "atkinson" }], results: [], frameSize: null },
       config: null, sources: {}, draft: null, accounts: [], mixRows: [], mixView: null,
@@ -1072,7 +1075,7 @@
       },
       async musicShow(push) {
         var m = this.music;
-        var body = { title: m.title, artist: m.artist, album: m.album || null, style: m.style, enrich_artwork: m.enrich, push_to_fraimic: push };
+        var body = { title: m.title || null, artist: m.artist, album: m.album || null, style: m.style, show_title: m.showTitle ? m.showTitle === "yes" : null, enrich_artwork: m.enrich, push_to_fraimic: push };
         await this.showResult(push, this.api("api/display/now-playing", { method: "POST", body: body }));
       },
       async cardShow(push) {
