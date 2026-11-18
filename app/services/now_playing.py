@@ -57,9 +57,13 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def content_key(request: NowPlayingRequest, style: str) -> str:
-    """Identity of the displayed cover (same track, album and style = same picture)."""
-    parts = [fold(request.title), fold(request.artist), fold(request.album or ""), style]
+def content_key(request: NowPlayingRequest, style: str, *, show_title: bool) -> str:
+    """Identity of the displayed cover: what is printed on it decides what is the same picture.
+
+    The track title only counts when it is printed, so tracks of one album share a key.
+    """
+    title = fold(request.title or "") if show_title else ""
+    parts = [title, fold(request.artist), fold(request.album or ""), style]
     return "music:" + hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:32]
 
 
@@ -102,7 +106,8 @@ class NowPlayingService:
         """
         config = self._config_store.config.music
         style = request.style or config.default_style
-        key = content_key(request, style)
+        show_title = request.shows_title(config.show_track_title)
+        key = content_key(request, style, show_title=show_title)
         now = self._clock()
         expires_at = now + cover_ttl(request, config) if request.ephemeral else None
 
@@ -116,24 +121,36 @@ class NowPlayingService:
             ):
                 updated = await self._display.extend_expiry(key, expires_at)
                 if updated is not None:
-                    logger.debug("Now playing %r is already displayed; expiry moved", request.title)
+                    logger.debug(
+                        "Now playing by %r is already displayed; expiry moved", request.artist
+                    )
                     return DisplayResult(image=updated, delivery=None, deduplicated=True)
 
         data, origin = await self._cover(request, config)
         layout: Layout
         if data is not None:
             layout = AlbumLayout(
-                title=request.title, artist=request.artist, album=request.album, style=style
+                title=request.title if show_title else None,
+                artist=request.artist,
+                album=request.album,
+                style=style,
             )
-        else:
+        elif show_title:
             layout = TitleCardLayout(
-                title=request.title,
+                title=request.title or "",
                 subtitle=request.artist,
                 caption=request.album,
                 accent=TITLE_CARD_ACCENT,
             )
+        else:
+            layout = TitleCardLayout(
+                title=request.album or request.artist,
+                subtitle=request.artist if request.album else None,
+                accent=TITLE_CARD_ACCENT,
+            )
+        label = (request.title if show_title else request.album) or request.artist
         details: dict[str, JsonValue] = {
-            "title": request.title,
+            "title": request.title if show_title else None,
             "artist": request.artist,
             "album": request.album,
             "style": style,
@@ -142,7 +159,7 @@ class NowPlayingService:
         }
         meta = DisplayMeta(
             source=SOURCE,
-            title=f"{request.title} — {request.artist}",
+            title=f"{label} — {request.artist}",
             details={k: v for k, v in details.items() if v is not None},
             push=request.push_to_fraimic,
             ephemeral=request.ephemeral,
@@ -174,7 +191,7 @@ class NowPlayingService:
                 logger.info("Ignoring artwork_url: %s", exc)
         if request.enrich_artwork and config.enrich_artwork:
             artwork = await self._artwork.find(
-                title=request.title,
+                title=request.title or request.album or "",
                 artist=request.artist,
                 album=request.album,
                 min_side=self._cover_side(request.style or config.default_style),

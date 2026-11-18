@@ -280,6 +280,11 @@ class MusicConfig(_Section):
     default_style: Literal["sleeve", "vinyl"] = Field(
         default="sleeve", description="Album template style: sleeve, or vinyl (a record peeks out)"
     )
+    show_track_title: bool = Field(
+        default=False,
+        description="Print the track title under the cover. Off: artist and album only, so "
+        "the frame stays still while an album plays (tracks of one album are deduplicated)",
+    )
     default_ttl_minutes: int = Field(
         default=10,
         ge=1,
