@@ -9,15 +9,18 @@ everyone out. Nothing is stored server-side.
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import secrets
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Final
 
 VERSION: Final = "v1"
+KDF_ITERATIONS: Final = 100_000
 COOKIE_NAME: Final = "sfe_session"
 #: Failed logins from one client before throttling starts, and the longest wait (seconds).
 FREE_ATTEMPTS: Final = 5
@@ -30,10 +33,19 @@ def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
+@lru_cache(maxsize=8)
 def signing_key(session_secret: str, password: str) -> bytes:
-    """Key of the session signatures; changes with the secret or the password."""
-    message = b"sfe-session:" + password.encode("utf-8")
-    return hmac.new(session_secret.encode("utf-8"), message, "sha256").digest()
+    """Key of the session signatures; changes with the secret or the password.
+
+    Derived with PBKDF2 (salted with the random session secret) and cached, so the cost is
+    paid once per process and not on every request.
+    """
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        b"sfe-session:" + session_secret.encode("utf-8"),
+        KDF_ITERATIONS,
+    )
 
 
 def _signature(key: bytes, payload: str) -> str:
