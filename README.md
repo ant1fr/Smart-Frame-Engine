@@ -1,800 +1,128 @@
-# Smart Frame Engine
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Smart Frame Engine" width="420">
+</p>
 
-Self-hosted web app and REST API that fetches images from modular sources (Immich,
-TMDB movie/TV posters, direct URLs), optimizes them for a color eInk panel (Spectra 6),
-and pushes them to a [Fraimic](https://fraimic.com) picture frame. Home Assistant
-friendly, runs standalone in Docker.
+<p align="center">
+  <a href="https://github.com/ant1fr/Smart-Frame-Engine/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ant1fr/Smart-Frame-Engine/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/ant1fr/Smart-Frame-Engine/pkgs/container/smart-frame-engine"><img alt="Docker image" src="https://img.shields.io/badge/ghcr.io-smart--frame--engine-2158c7?logo=docker&logoColor=white"></a>
+  <a href="https://github.com/ant1fr/Smart-Frame-Engine/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ant1fr/Smart-Frame-Engine?include_prereleases&sort=semver"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/ant1fr/Smart-Frame-Engine"></a>
+</p>
 
-> **Status:** early development (`v0.x`). The core service, the eInk pipeline, frame
-> delivery (continuous and deep-sleep), the Immich provider, TMDB posters, now-playing
-> album covers, ephemeral images, the autonomous scheduler and the web UI are in place.
+<h3 align="center">Your best photos, movie posters and album covers on a color e-ink frame, automatically.</h3>
 
-## Quickstart
+---
+
+## What is it?
+
+A **Fraimic** frame uses a *Spectra 6* e-ink panel: paper-like, no glare, no backlight, zero power
+while it shows a picture. But the panel only has **six colors** (black, white, yellow, red, blue,
+green), so a photo sent as-is looks muddy.
+
+**Smart Frame Engine** is the missing piece. It runs quietly on your home server, picks pictures
+for you, prepares them so they look their best on those six colors, and sends them to the frame:
+
+- 📸 **Your Immich photos**, chosen for you: favorite people, albums, "on this day"... with a
+  quality filter that skips screenshots, blurry shots, documents and blank frames.
+- 🎬 **Movie and TV posters** in HD (from TMDB) when you start a film, shown whole, never cropped.
+- 🎵 **Album covers** for the music that is playing, with the artist and album underneath.
+- 🧠 **A smarter eInk pipeline**: it chooses the right color profile and dithering per picture, so
+  skin tones, skies and album art all look right.
+- 🏠 **Home Assistant friendly**: show the right thing when you press play, when guests arrive, or
+  when it rains. Or ignore Home Assistant entirely: it also works on its own, on a timer.
+- 🔒 **Yours alone**: self-hosted, no cloud, optional password. Private albums and the Immich
+  Locked Folder never appear on the wall.
+
+<p align="center">
+  <img src="docs/assets/ui-dashboard.png" alt="The dashboard: the composition and the exact 6-color result" width="860">
+</p>
+
+## Get it running in 3 minutes
+
+You need Docker and the address of your frame. (Immich and TMDB are optional and can be added
+later, in the web UI.)
 
 ```bash
-cp .env.example .env        # then fill in your values
-mkdir -p data               # must be writable by PUID:PGID (default 1000:1000)
+mkdir smart-frame && cd smart-frame
+curl -fsSLO https://raw.githubusercontent.com/ant1fr/Smart-Frame-Engine/main/docker-compose.yml
+curl -fsSL  https://raw.githubusercontent.com/ant1fr/Smart-Frame-Engine/main/.env.example -o .env
 docker compose up -d
 ```
 
-- Web UI: `http://<host>:8080/`
-- API docs: `http://<host>:8080/docs`
-- Health: `http://<host>:8080/api/health`
+1. Open **http://localhost:8080** (or `http://<your-server>:8080`).
+2. *Settings → Frame*: enter the frame's IP address (give it a fixed IP on your router).
+3. *Settings → Immich*: add your server and API key, tick the people or albums you like.
+4. Press **Next photo** on the dashboard. 🎉
 
-## Portainer
+Want it to refresh by itself? Turn on the scheduler in *Settings → Frame & schedule*.
 
-Use *Stacks → Repository* with the `develop` branch and compose path
-`docker-compose.portainer.yml`. The stack variables `HOST_PORT`, `DATA_PATH` (host folder
-bound to `/data`), `PUID` and `PGID` configure the deployment; every other variable of
-`.env.example` (all optional) is passed to the app. Create `DATA_PATH` first and `chown` it
-to `PUID:PGID`. Immich, TMDB and the frame can also be set later in the web UI.
+> **Using a NAS or Portainer?** Set `DATA_DIR` (a host folder), `HOST_PORT`, `PUID` and `PGID`
+> in `.env` or in the stack variables. Step-by-step guides are in the
+> [wiki](https://github.com/ant1fr/Smart-Frame-Engine/wiki/Installation-and-Deployment).
+> Building from source: `docker compose -f docker-compose.build.yml up -d --build`.
 
-## Web UI
+## A quick tour
 
-A single page served at `/` (Tailwind CSS and Alpine.js from a CDN, no build step). It
-follows the system light/dark theme (toggle in the header), works on phones, and only
-uses relative URLs, so it runs unchanged behind a reverse proxy on a domain or a sub-path
-(`ROOT_PATH`).
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/ui-playground.png" alt="Playground"><br><b>Playground</b>: try posters, album covers and title cards, and compare Spectra 6 renderings side by side before anything reaches the frame.</td>
+    <td width="50%"><img src="docs/assets/family-mode-placeholder.svg" alt="Family Mode"><br><b>Family Mode</b>: show only your family, hide private people and albums, and let Home Assistant switch it on when guests are over.</td>
+  </tr>
+</table>
 
-- **Dashboard.** The current composition next to the exact 6-color Spectra output (click
-  to zoom at actual pixels), the eInk profile and dithering used with the reasons, the mode
-  (slideshow with the next refresh, or ephemeral with a countdown and *Restore previous
-  image*), the frame state (battery, Wi-Fi, last seen, queued upload in deep-sleep mode),
-  recent images and the last log lines. *Next photo* and *Force push* are one click away.
-- **Playground.** Search TMDB and preview or send a poster, a Now Playing album cover
-  (sleeve or vinyl) or a title card. A preview never reaches the frame until you press
-  *Send this preview*. The **render lab** renders an uploaded image with up to four
-  profile/dither variants side by side (`auto` against manual choices) without storing or
-  sending anything.
-- **Settings.** Frame and schedule; Immich accounts with *Test connection*, then album
-  and people pickers with thumbnails; TMDB key with *Test key*; Smart Mix entries with
-  weight sliders and live percentages; eInk profile and dithering (`auto` by default);
-  the photo quality gate; the API key (show, copy, regenerate).
+<p align="center">
+  <img src="docs/assets/frame-photo-placeholder.svg" alt="A Fraimic frame on the wall" width="640"><br>
+  <sub>Your frame, on the wall. (A real photo is coming.)</sub>
+</p>
 
-Endpoints added for the UI (all need the API key or a session when authentication is on):
+- **Smart Mix**: a weighted playlist ("60% family, 25% travel, 15% movie posters") for
+  scheduled refreshes, plus **Random Discovery** that occasionally digs up a forgotten photo.
+- **Ambient context**: Home Assistant can say who is home, the weather or the season; the engine
+  leans the playlist that way for a while, then forgets on its own.
+- **Battery frames**: in deep-sleep mode, new pictures wait in a queue and are delivered the
+  moment the frame wakes up.
+- **Temporary pictures**: a poster or album cover shows for the length of the film or song,
+  then your slideshow comes back.
 
-| Endpoint | Purpose |
+## Learn more
+
+The full documentation lives in the **[GitHub Wiki](https://github.com/ant1fr/Smart-Frame-Engine/wiki)**:
+
+| | |
 | --- | --- |
-| `GET /api/activity` | Last ~30 displayed images and ~200 log lines (secrets redacted, in memory only). |
-| `POST /api/playground/render` | Multipart image + `variants` (JSON list of `{profile, dither}`, up to 4) + optional `template` (`poster`, `album`, `title_card`): data URLs, the decision and the time of each variant. Never stored or pushed. |
-| `POST /api/display/title-card` | `title`, `subtitle`, `caption`, `accent` (`red`, `yellow`, `blue`, `green`, `white`); ephemeral by default (`ttl_minutes`, default 60). |
-| `GET /api/tmdb/search?q=` | Matches with a `w185` poster thumbnail URL (`media_type`, `year`, `language`). |
-| `POST /api/tmdb/test` | Checks the stored key or an unsaved one. |
-| `POST /api/immich/test` | Checks a saved account or an unsaved URL and key: version, people and album counts. |
-| `GET /api/immich/thumbnail/{account}/{asset\|person}/{id}` | Album cover or face thumbnail, proxied so the browser never sees Immich keys. |
-
-## Security
-
-| Setup | Effect |
-| --- | --- |
-| Nothing set | Pure LAN usage: everything is open. |
-| `APP_API_KEY` only | `POST`/`PUT`/`DELETE`, `/api/config`, `/api/immich`, `/api/smart-mix`, `/api/tmdb`, `/api/activity` need the key; other reads stay public. Sign in to the web UI with the key. |
-| `ADMIN_PASSWORD` | Web UI login (`admin` + password). **Everything** needs a session or the API key except `/api/health`, the login and, while `PUBLIC_IMAGE_ENDPOINTS=true`, the image endpoints. |
-
-- **API key.** Send it as `X-API-Key: <key>`, `Authorization: Bearer <key>` or `?api_key=`.
-  With `ADMIN_PASSWORD` and no `APP_API_KEY`, a key is generated into `./data/secrets.json`
-  (readable by its owner only); the signed-in admin can view, copy and regenerate it
-  (`GET /api/auth/api-key`, `POST /api/auth/api-key/regenerate`). A key set in `.env` is
-  pinned and cannot be changed through the API it protects.
-- **Login.** `POST /api/auth/login` sets a signed `HttpOnly`, `SameSite=Strict` session
-  cookie (`Secure` behind HTTPS, scoped to `ROOT_PATH`), valid `SESSION_TTL_HOURS` (one
-  week). Changing `ADMIN_PASSWORD` signs everyone out. Repeated failures are throttled per
-  client (exponential backoff, up to 5 minutes). Without `ADMIN_PASSWORD` but with an API
-  key, the login accepts the API key as the password.
-- **CSRF.** Requests authenticated by the cookie that change something must send
-  `X-Requested-With: SmartFrame`; browsers cannot add it cross-site without a CORS preflight.
-  API key requests are unaffected.
-- `GET /api/auth/session` tells the mode (`open`, `key`, `password`) and whether the caller
-  is signed in. Home Assistant sensors that poll `/api/status` need the API key once
-  `ADMIN_PASSWORD` is set.
-
-Runtime settings are stored in `./data/config.json` and can be edited with
-`GET`/`PUT /api/config`. Values saved there take precedence over `.env`, which in turn
-takes precedence over built-in defaults. `POST /api/config/reset` removes saved values.
-
-## eInk pipeline
-
-Images are fitted to the panel (`smart_crop` around faces, or `contain` on a blurred /
-black / white background), enhanced and dithered onto the 6-color Spectra 6 palette with
-the official tuned color metric. Landscape mode rotates the image into the panel's portrait
-buffer *before* dithering, like the official `--fit rotate`, so its `.bin` is
-byte-identical too. HEIC/HEIF (iPhone) images decode natively. Every `.bin` is checked
-against the panel specification before it is stored (exact size, only valid palette codes,
-the `0x11` padding of the 31.5" IC4/IC8 blocks).
-
-**Automatic look (default).** Nobody should have to tune a profile or a dithering algorithm
-per image: `eink.profile` and `eink.dither` default to `auto`, and the engine decides from
-the kind of image (photo, movie poster, album cover, title card) and a few cheap statistics
-of a 256 px thumbnail (a few milliseconds):
-
-| Image | Profile | Dithering |
-| --- | --- | --- |
-| Title card | `natural` | `atkinson-classic` |
-| Graphic: an album cover with very few colors or large flat areas, a poster with very few colors | `official` | `atkinson-classic` |
-| Album cover | `soft` | `atkinson-classic` (flat lettering must not smear) |
-| Poster with bright highlights or strong contrast | `photo` (deep blacks, rich colors, natural skin) | `fs-serpentine` |
-| Flat or muted poster | `vivid` | `fs-serpentine` |
-| Dark photo | `soft` (lifted shadows) | `fs-serpentine` |
-| Bright photo without blacks (snow, beach, fog) | `vivid` (keeps the whites) | `fs-serpentine` |
-| Low-contrast photo | `soft` | `fs-serpentine` |
-| Photo with large smooth regions (sky, fog) | `photo` | `stucki` |
-| Other photos | `photo` | `fs-serpentine` |
-
-A photo is never treated as a graphic, however flat its background: a night shot with a big
-black sky or a snowfield is still a photograph.
-
-An explicit value always wins and `auto` only fills in the rest. `GET /api/status` reports
-what was used and why in `current_image.render` (`profile`, `dither`, `reasons`).
-
-| `eink.profile` | Look |
-| --- | --- |
-| `auto` | Chosen per image (above) |
-| `official` | The official converter: the `eink` brightness / contrast / saturation / sharpness / `edge_filters` fields (defaults +10% / +20% / +20%, edge-enhance, smooth, sharpen) |
-| `photo` | Softer preset tuned on a real panel: no edge filters, saturation 0.85, sharpness 0.8 |
-| `soft` | Gamut-safe curve: lifted shadows, restrained highlights, no clipping |
-| `vivid` | Gamut-safe curve: stronger contrast, richer color, gradual highlight roll-off |
-| `natural` | No enhancement |
-
-`soft` and `vivid` work on luminance in floating point and compress chroma toward it only
-where it would leave the RGB gamut (one scale for all channels, so hue is kept instead of
-clipping individual channels); adapted from the MIT-licensed stillroom
-converter (© Fraimic).
-
-| `eink.dither` | Algorithm | 13.3" |
-| --- | --- | --- |
-| `atkinson` | The official converter's 4-neighbour Atkinson, **byte-identical** to it | 0.7 s |
-| `atkinson-classic` | Original 6-neighbour Atkinson (3/4 of the error): crisp edges, clean flats | 0.8 s |
-| `fs` | Floyd-Steinberg | 0.7 s |
-| `fs-serpentine` | Floyd-Steinberg with alternating scan direction: no directional "worm" patterns | 0.05 s |
-| `stucki` | Wide 12-neighbour kernel: smoother skies and gradients | 0.06 s |
-| `blue-noise` | Ordered blue-noise threshold (a bundled tileable tile): film-grain look, no diffusion | 0.03 s |
-
-Error diffusion is sequential, but the plain kernels run along anti-diagonals in vectorized
-NumPy (about 0.7 s instead of ~40 s). Serpentine scanning cannot be vectorized that way, so
-`fs-serpentine` and `stucki` run as [numba](https://numba.pydata.org)-compiled loops (x86
-timings; a Raspberry Pi is roughly 5-10x slower and still well under a second). The kernels
-are compiled at Docker build time (`NUMBA_CACHE_DIR=/app/.numba_cache`; outside Docker the
-cache goes to `DATA_DIR/.numba_cache`). If numba cannot be imported, `stucki` falls back to
-the NumPy path and `fs-serpentine` to `fs`, with a warning. `floyd_steinberg` is still
-accepted as an alias of `fs`.
-
-Compare the previous look with `auto` side by side on your own photos with
-`python scripts/quality_ab.py` (see [Development](#development)).
-
-If a mat or bezel hides the panel edges, set `display.safe_margin_px` (default `0`):
-the picture is inset by that many pixels on every side and the margin is filled with
-`display.contain_background`.
-
-Generated files (`./data/cache/`):
-
-| File | Endpoint | Content |
-| --- | --- | --- |
-| `current.jpg` | `GET /api/current.jpg` | Enhanced composition, before dithering (HA Generic Camera) |
-| `current_dithered.png` | `GET /api/current_dithered.png` | Exact 6-color preview of the panel |
-| `current.bin` | `GET /api/current.bin` | Frame buffer sent to the frame (960,000 / 2,304,000 bytes) |
-| `preview.jpg`, `preview_dithered.png` | `GET /api/preview.jpg`, `GET /api/preview_dithered.png` | The latest render, including `push_to_fraimic=false` ones |
-| `base.*` | - | The last pushed non-ephemeral image, restored after an [ephemeral image](#ephemeral-images-and-the-queue) |
-
-`current.*` always matches what the frame shows (or will show once a sleeping frame wakes
-up). A render with `push_to_fraimic=false` only updates `preview.*`, so a template can be
-inspected without touching the frame or Home Assistant's camera;
-`POST /api/fraimic/push?from_preview=true` then sends it. (Before this release,
-`push_to_fraimic=false` replaced `current.*`.)
-
-### Composition templates
-
-Posters and album covers are never cropped. Instead of a fit mode they use a template that
-lays the artwork out for the frame (portrait or landscape, 13.3" or 31.5"), always with the
-`official` eInk profile:
-
-- **`poster`** - the full poster centered over a blurred, darkened backdrop made from the
-  poster itself, with a thin light border and a soft shadow.
-- **`album`** - the full square cover (non-square art is padded, not cropped) with the title,
-  artist and album underneath (portrait) or beside it (landscape), on a flat background
-  color sampled from the cover. `style: "vinyl"` slides a record out of the sleeve.
-- **`title_card`** - a clean typographic card, used when no artwork can be found.
-
-Artwork that still has to be enlarged skips the edge-enhance / sharpen chain, which would
-only amplify its blur and JPEG blocks.
-
-Text uses the bundled [Inter](https://rsms.me/inter/) font (never Pillow's bitmap
-default), wraps and shrinks to fit, ends with an ellipsis when it really is too long, and is
-drawn in pure black or white, whichever contrasts more with the background. It is rendered
-without anti-aliasing, so glyphs stay a single panel color after dithering instead of
-picking up colored fringes.
-## Immich
-
-Photos come from one or several [Immich](https://immich.app) accounts. Pinned against
-Immich 3.3.5 (`/api/spec.json`); payloads are parsed leniently.
-
-```bash
-# Quickstart: one account from .env (named "default")
-IMMICH_URL=http://immich.lan:2283
-IMMICH_API_KEY=...
-
-# A random photo with Alice and Bob together
-curl -X POST http://localhost:8080/api/display/immich -H 'Content-Type: application/json' \
-  -d '{"persons": ["Alice", "Bob"], "match_mode": "all"}'
-
-# CLIP search, favorites, or an album
-curl -X POST .../api/display/immich -H 'Content-Type: application/json' -d '{"mode": "search", "clip_queries": ["snowy mountains"]}'
-curl -X POST .../api/display/immich -H 'Content-Type: application/json' -d '{"mode": "favorites"}'
-curl -X POST .../api/display/immich -H 'Content-Type: application/json' -d '{"mode": "album", "album_name": "Holidays"}'
-```
-
-| Request field | Meaning |
-| --- | --- |
-| `mode` | `random` (default), `album`, `favorites` or `search` (CLIP, needs `clip_queries`) |
-| `persons`, `match_mode` | Plain person **names** (never Home Assistant entity IDs); `any` or `all` of them |
-| `always_include` | Names merged into every selection (e.g. a child without an HA account). Defaults to `immich.always_include`; send `[]` to switch it off |
-| `album_name` / `album_id` | Restrict to an album (names are case-insensitive) |
-| `accounts` | Limit to some accounts |
-| `fit`, `push_to_fraimic` | Fit override, push to the frame (default true) |
-| `ignore_history` | Allow photos shown within `anti_repeat_days` or taken close to one |
-| `skip_quality_gate` | Skip the suitability check (default: skipped in `album` mode, checked otherwise) |
-| `taken_after`, `taken_before` | Only photos taken in this range (ISO 8601 with a timezone) |
-| `on_this_day` | Memories: `{"window_days": 3, "years_back": 10, "min_years_ago": 1}` around today's date in past years (exclusive with the date range) |
-| `ephemeral`, `hold_minutes` | Temporary push: do not remember it as the rule to replay; keep it up at least this long (see [Smart Mix](#smart-mix-and-smart-search)) |
-
-Unset filters fall back to the `immich` section of the settings. All modes share one
-query path, so persons, albums and favorites combine freely.
-
-**Accounts.** `immich.accounts` is a named map (`url` + `api_key`); `IMMICH_URL` /
-`IMMICH_API_KEY` seed an account called `default` (saved settings win over `.env`). API keys
-are masked in `GET /api/config`, and sending the masked view back keeps the stored key.
-
-```json
-{"immich": {
-  "accounts": {"home": {"url": "http://immich.lan:2283", "api_key": "..."},
-               "partner": {"url": "https://photos.example.org", "api_key": "..."}},
-  "always_include": ["Kid"],
-  "person_aliases": {"Marie": {"partner": ["Maman", "0b7e1c3a-0000-0000-0000-000000000000"]}}
-}}
-```
-
-**People.** Names are resolved per account from `GET /api/immich/people` (cached for
-`people_cache_ttl_s`, refresh with `POST /api/immich/people/refresh`). Two people with the
-same name in one account are rejected with a hint to pin an ID in `person_aliases`;
-unknown names get "did you mean" suggestions. `person_aliases` maps a canonical name to
-IDs or names that exist in a given account.
-
-**Selection.** Candidates of all accounts are merged, de-duplicated by content checksum
-(the same photo in two accounts counts once) and filtered by the anti-repeat history
-(`immich.anti_repeat_days`, shared across accounts), then one is picked at random. The
-original is downloaded at full resolution (HEIC works); RAW files and files larger than
-`MAX_UPLOAD_MB` use Immich's converted JPEG (`fullsize`, then `preview`).
-
-**Quality gate.** Rather than force an unsuitable image onto a 6-color panel, photos are
-vetted *before* the full-size download, using a ~250 px thumbnail and metadata (no pixels
-are ever modified; about 10 ms of NumPy per candidate, and normally one candidate is
-enough). Rejected: blank/near-black frames, tiny images (short side below
-`quality.min_dimension`, default 600 px), screenshots and graphics (no camera EXIF *and* a
-large bright flat area or a tall phone-screen shape) and document scans. Kept on purpose:
-black-and-white portraits, night shots, scanned family photos and low-contrast snow
-scenes. Thresholds come from a calibration on ~400 real photos (4.3% rejected) and live in
-the `quality` settings section. If none of `quality.candidates_checked` (default 8)
-passes, the rules relax in four steps (halve the size limit, drop the phone-shape and
-document rules, keep only blank and flat-color screenshots, keep only blank) so a request
-never dead-ends; the outcome is reported in the image details under `suitability`
-(`level`, `checked`, `rejected`). A thumbnail that cannot be read never blocks a photo.
-
-**Burst cooldown.** The history stores each photo's capture time. After a photo was
-shown, others taken within `immich.burst_cooldown_hours` (default 2) of it are skipped for
-`immich.burst_cooldown_days` (default 3), so rapid-fire shots of one moment are not shown
-back-to-back while other photos of the same trip can still appear later (`0` for either
-setting disables it; `ignore_history` bypasses it). The exact-repeat memory stays
-`anti_repeat_days` (default 30).
-
-**Face-aware crop.** Face boxes of the requested people drive `smart_crop` (all faces are
-the fallback), padded by 25% for hair and shoulders. When two faces are too far apart for
-the crop window, the larger one is kept whole instead of slicing both. Edited Immich assets
-are cropped without face boxes.
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /api/display/immich` | Select, render, deliver and record a photo |
-| `GET /api/immich/albums` | Albums across accounts (`?accounts=`) |
-| `GET /api/immich/people` / `POST /api/immich/people/refresh` | Resolved people per account, ambiguity and alias mapping |
-
-`GET /api/immich/*` requires the API key (or a login) when authentication is on (it lists family member
-names). A LAN Immich needs `URL_ALLOWLIST` when `BLOCK_PRIVATE_URLS=true`.
-
-## Frame delivery
-
-The frame is driven through its local REST API (`GET /api/info`, `POST /api/image`).
-
-- **`continuous`** (mains powered): every new image is pushed immediately; failures are
-  retried with exponential backoff.
-- **`deepsleep`** (battery): the image is queued in `./data/queue/` and pushed as soon as
-  the frame answers (probed every `poll_interval_s`), or immediately when Home Assistant
-  calls `POST /api/fraimic/wakeup`.
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /api/display/upload` | Upload an image (multipart `file`, optional `fit`, `push_to_fraimic`, `ephemeral`, `hold_minutes`) |
-| `POST /api/fraimic/push` | Force push the current image now (200 delivered, 202 queued); `?from_preview=true` sends the latest preview |
-| `POST /api/fraimic/wakeup` | Frame is awake: flush the queue (202, or `?wait=true` for the outcome) |
-| `GET /api/fraimic/info` | Last known battery / Wi-Fi / firmware (`?refresh=true` queries the frame) |
-| `GET /api/status` | Frame telemetry, queue state, current image metadata and scheduler state |
-
-## Scheduler
-
-The frame can update itself without Home Assistant. The scheduler replays the **active
-rule** every `scheduler.interval_hours` hours (`REFRESH_INTERVAL_HOURS`, default 6, minimum
-0.25) once `scheduler.enabled` is on (`SCHEDULER_ENABLED=true`):
-
-- **Active rule**, in order of precedence: (1) the rule pinned in `scheduler.source_rule`;
-  (2) the [Smart Mix](#smart-mix-and-smart-search) playlist, when enabled and non-empty;
-  (3) the last non-ephemeral request made through `POST /api/display/immich` (pushed to the
-  frame; previews with `push_to_fraimic=false` do not count), so showing "Alice and Bob
-  at the beach" once keeps rotating through those photos with the anti-repeat history.
-  Pin a fixed rule in `scheduler.source_rule` to override the others:
-
-  ```bash
-  curl -X PUT http://localhost:8080/api/config -H 'Content-Type: application/json'     -d '{"scheduler": {"enabled": true, "source_rule":
-         {"kind": "immich", "params": {"mode": "favorites", "persons": ["Alice"]}}}}'
-  ```
-
-  `params` takes the fields of `POST /api/display/immich` (except `push_to_fraimic` and
-  `ignore_history`, `ephemeral`, `hold_minutes`), or of `POST /api/display/tmdb` for
-  `"kind": "tmdb"` rules. The last rule is kept in `./data/scheduler_state.json`, so
-  displaying a photo never rewrites your settings.
-- **Timer.** Any display (a manual photo, an upload, a refresh) restarts the interval, so
-  a picture chosen by hand stays up for a full interval. A refresh that became due while
-  the app was down runs about 30 s after startup.
-- **Quiet hours.** `QUIET_HOURS_START` / `QUIET_HOURS_END` (24h `HH:MM`, may cross
-  midnight, e.g. `22:00` -> `07:00`) in the timezone `TZ` (IANA, e.g. `Europe/Paris`; the
-  container otherwise runs in UTC). A refresh due inside the window runs when it ends;
-  daylight saving changes are handled.
-- **Failures.** If Immich is down or nothing matches, the refresh is retried after
-  `scheduler.retry_minutes` (default 15), doubling each time, capped by the interval.
-- **Sleeping frames.** With `scheduler.skip_if_pending` (default on), a scheduled refresh
-  is skipped while the previous image still waits in the deep-sleep queue, so an image the
-  frame never showed is not replaced.
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /api/refresh` | Replay the active rule now and push the result (ignores quiet hours; 409 when there is nothing to replay or a refresh is running) |
-| `GET /api/status` | `scheduler`: `next_run_at`, `in_quiet_hours`, `last_run` (`ok`/`failed`/`skipped` and why), `consecutive_failures`, `active_rule` (`pinned`, `smart_mix` or `last`), `hold_until`, `smart_mix` |
-
-```yaml
-# Home Assistant: a "next photo" button
-rest_command:
-  frame_next_photo:
-    url: http://smart-frame.lan:8080/api/refresh
-    method: POST
-    timeout: 60   # selecting, downloading and dithering a photo takes a few seconds
-    headers:
-      X-API-Key: !secret smart_frame_api_key   # when APP_API_KEY or ADMIN_PASSWORD is set
-```
-
-## Smart Mix and Smart Search
-
-**Smart Mix** is a weighted playlist of source rules for scheduled refreshes, so the frame
-shows a varied rotation (family, favorites, "this season", memories...) instead of one
-filter. It knows nothing about providers: each entry wraps a rule (`kind` + `params`, the
-body of the matching display endpoint), and the runner registered for that `kind` plays it.
-Adding a provider later needs no change to the configuration.
-
-```bash
-curl -X PUT http://localhost:8080/api/config -H 'Content-Type: application/json' -d '{
-  "scheduler": {"enabled": true, "interval_hours": 3},
-  "smart_mix": {"enabled": true, "entries": [
-    {"label": "Family", "kind": "immich", "weight": 5,
-     "params": {"persons": ["Alice", "Bob"], "match_mode": "any"}},
-    {"label": "This season", "kind": "immich", "weight": 2,
-     "params": {"mode": "search", "clip_queries": ["{season} landscape", "{month_name} light"]}},
-    {"label": "On this day", "kind": "immich", "weight": 1,
-     "params": {"on_this_day": {"window_days": 3, "years_back": 10}}}
-  ]}
-}'
-```
-
-- **Weights** are relative. Each refresh orders the enabled entries by weighted random
-  sampling and tries them in turn: if one has no candidate (nothing left in the anti-repeat
-  history, an empty album) or fails, the next one is tried, up to `smart_mix.max_attempts`
-  (default 3). With `avoid_consecutive` (default) the entry shown last is tried last.
-- **Context placeholders.** `{season}`, `{month}`, `{month_name}` and `{year}` in string
-  params are expanded each time the entry runs (`smart_mix.hemisphere` flips the seasons;
-  the timezone is `scheduler.timezone`). `on_this_day` searches `window_days` around today's
-  date in each of the last `years_back` years; `taken_after` / `taken_before` give a fixed
-  date range. No album IDs are needed.
-- **Precedence** for scheduled refreshes and `POST /api/refresh`: the pinned
-  `scheduler.source_rule`, then the Smart Mix (enabled with at least one enabled entry),
-  then the last non-ephemeral manual display. Mix refreshes never overwrite that last
-  display, so turning the mix off restores the previous behavior.
-- **Direct pushes always win.** `POST /api/display/immich`, `/upload` and `/smart-search`
-  display immediately, restart the refresh timer and never touch the playlist or your
-  settings. Add `"ephemeral": true` so a temporary push (a movie poster, a song) is not
-  remembered as the rule to replay, and `"hold_minutes": 150` so no scheduled refresh
-  replaces it before then (`hold_until` in `GET /api/status`). A manual
-  `POST /api/refresh` ignores the hold.
-
-**Smart Search** is the same idea for one-off pushes: describe what you want, never an ID.
-
-```bash
-curl -X POST http://localhost:8080/api/display/smart-search -H 'Content-Type: application/json' \
-  -d '{"query": "rainy sunday", "persons": ["Alice"], "hold_minutes": 120}'
-curl -X POST .../api/display/smart-search -H 'Content-Type: application/json' \
-  -d '{"on_this_day": true}'
-```
-
-`query` / `queries` are CLIP phrases (placeholders allowed), combined freely with `persons`,
-`match_mode`, `accounts`, `on_this_day`, `taken_after` / `taken_before`, `fit`,
-`push_to_fraimic` and `ignore_history`. Smart-search pushes are ephemeral by default
-(`"ephemeral": false` stores one as the rule to replay).
-
-A **context boost** shapes the *next scheduled refreshes* for a while, without displaying
-anything now: it joins the playlist with its own weight (default 3), or replaces it with
-`"exclusive": true`, until `ttl_minutes` pass.
-
-```bash
-curl -X POST .../api/smart-mix/context -H 'Content-Type: application/json' \
-  -d '{"queries": ["cozy rainy day"], "weight": 5, "ttl_minutes": 240, "label": "rain"}'
-curl -X DELETE .../api/smart-mix/context
-```
-
-For another source, send `kind` and `params` instead of `queries`. Unknown kinds are
-rejected: `GET /api/smart-mix` lists the supported ones.
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /api/display/smart-search` | Contextual search and immediate (ephemeral) push |
-| `POST /api/smart-mix/context` | Temporary boost or override of the playlist (409 when the mix is disabled) |
-| `DELETE /api/smart-mix/context` | Remove the boost |
-| `GET /api/smart-mix` | Playlist with each entry's probability, resolved placeholders, live boost and supported kinds |
-
-`/api/smart-mix` requires the API key for every method when `APP_API_KEY` is set.
-`GET /api/status` reports `scheduler.smart_mix`, `hold_until`, and the entry shown by the
-last refresh (`last_run.entry_label`).
-
-```yaml
-# Home Assistant: push a contextual photo on demand, boost the mix while it rains
-rest_command:
-  frame_smart_search:
-    url: http://smart-frame.lan:8080/api/display/smart-search
-    method: POST
-    content_type: application/json
-    payload: '{"query": "{{ query }}", "hold_minutes": {{ hold | default(120) }}}'
-    timeout: 60
-    headers:
-      X-API-Key: !secret smart_frame_api_key
-  frame_rain_boost:
-    url: http://smart-frame.lan:8080/api/smart-mix/context
-    method: POST
-    content_type: application/json
-    payload: '{"queries": ["cozy rainy day"], "weight": 5, "ttl_minutes": 240, "label": "rain"}'
-    headers:
-      X-API-Key: !secret smart_frame_api_key
-
-automation:
-  - alias: Frame - rainy day mood
-    trigger:
-      - platform: state
-        entity_id: weather.home
-        to: rainy
-    action:
-      - service: rest_command.frame_rain_boost
-```
-
-## Family Mode, Random Discovery and ambient context
-
-**Locked Folder (always on).** Photos in Immich's Locked Folder are never selected by any
-pipeline (Smart Mix, Random Discovery, smart search, refresh), with Family Mode on or off.
-
-**Family Mode** (`family` settings, Settings → Family Mode) filters every Immich selection
-over the *whole library*, automatically, with no per-photo curation:
-
-| Setting | Effect |
-| --- | --- |
-| `enabled` | Apply the filters (a live `family_mode` in `/api/context` overrides it). |
-| `members` | Recognized people (Immich faces): keep photos showing **at least one** of them. Empty = the whole library. |
-| `require_member` | `false` keeps the members list but only applies the exclusions below. |
-| `private_albums` | Album names or IDs: every photo in them is excluded (membership cached for `immich.people_cache_ttl_s`). |
-| `private_people` | People whose photos are never shown. |
-
-**Random Discovery** (`smart_mix.discovery_share`, 0 to 0.5, default 0.15): each scheduled
-refresh first rolls this share. On a hit it shows a random photo of the whole library
-(ignoring the default persons/album filters) with the quality gate enforced, so
-screenshots, low-resolution shots, documents and blank frames are skipped, and Family Mode
-and the Locked Folder rule applied. If nothing suitable is found, the weighted entries are
-used. Memes have no reliable detector: the screenshot rule (no camera EXIF plus a flat or
-phone-shaped image) catches many but not all.
-
-**Ambient context** (`POST`/`GET`/`DELETE /api/context`, API key): short-lived facts from
-Home Assistant. Every field expires on its own (`ttl_minutes`, default
-`ambient.default_ttl_minutes` = 180) and is stored in `scheduler_state.json`, so it survives
-a restart. A field is either the bare value or `{"value" | "values": ..., "ttl_minutes": n}`;
-an empty list or text clears a field, `DELETE /api/context?field=presence` clears one.
-
-| Field | Effect |
-| --- | --- |
-| `family_mode` (bool) | Forces Family Mode on or off while live. |
-| `presence` (names) | Adds a candidate showing any of these people (weight `ambient.boost_weight`). |
-| `boost_people` (names) | Same, for people to favour. |
-| `boost_tags` (phrases) | Adds a CLIP search candidate (`beach`, `birthday`...). |
-| `weather` (keyword) | Adds the CLIP phrase of `ambient.weather_queries` (`sunny`, `rainy`, `cloudy`, `snowy`, `stormy`, `foggy`, `clear-night`; edit the map to taste). |
-| `season` | Replaces the calendar season in `{season}` placeholders. |
-
-Candidates only matter while the Smart Mix is the active rule. The dashboard shows the live
-context with its expiries. `/api/smart-mix/context` stays available for one-off rule boosts.
-
-```yaml
-rest_command:
-  frame_guests_over:
-    url: http://smart-frame.lan:8080/api/context
-    method: POST
-    content_type: application/json
-    payload: '{"family_mode": {"value": true, "ttl_minutes": 360}}'
-    headers:
-      X-API-Key: !secret smart_frame_api_key
-  frame_context_home:
-    url: http://smart-frame.lan:8080/api/context
-    method: POST
-    content_type: application/json
-    payload: '{"presence": {{ presence | tojson }}, "weather": "{{ weather }}", "ttl_minutes": 120}'
-    headers:
-      X-API-Key: !secret smart_frame_api_key
-```
-
-### Zeroconf / mDNS
-
-With `ZEROCONF_ENABLED=true` (default) the engine advertises `_smartframe._tcp.local.` with
-TXT records `version`, `path` (`ROOT_PATH`, `/` when empty) and `auth` (`open`, `key` or
-`password`). Any error is logged and ignored. Docker's default bridge network drops
-multicast: to be discoverable, run the container with `network_mode: host` (and drop the
-`ports:` mapping; set `PORT` instead). Home Assistant only discovers this service type
-through an integration that declares it, which does not exist yet: add the engine manually
-with its URL.
-
-## Movie and TV posters (TMDB)
-
-`POST /api/display/tmdb` finds a movie or series on [TMDB](https://www.themoviedb.org)
-(`TMDB_API_KEY`: a v3 API key or a v4 read access token) and shows its best poster with the
-`poster` template.
-
-```bash
-curl -X POST http://localhost:8080/api/display/tmdb -H 'Content-Type: application/json' \
-  -d '{"query": "Le Fabuleux Destin d'"'"'Amélie Poulain", "media_type": "movie", "year": 2001}'
-curl -X POST .../api/display/tmdb -H 'Content-Type: application/json' \
-  -d '{"query": "The Office", "media_type": "tv", "season": 3, "language": "en-US"}'
-```
-
-| Request field | Meaning |
-| --- | --- |
-| `query` (or `title`) | Movie or series title |
-| `media_type` | `movie`, `tv` or `multi` (both, default; `auto` is accepted) |
-| `year`, `season` | Release year; TV season whose poster is preferred (falls back to the series poster) |
-| `language` | Overrides `tmdb.language` (default `fr-FR`), e.g. `fr-CA` |
-| `fallback_url`, `fallback_base64` | Picture used when TMDB has nothing, e.g. the Home Assistant `entity_picture` (base64 is tried first) |
-| `ephemeral`, `ttl_minutes`, `hold_minutes` | Temporary by default: the previous image returns after `ttl_minutes` (default `tmdb.ephemeral_ttl_minutes`, 180) |
-| `push_to_fraimic` | `false` only renders a preview |
-
-**Regional posters.** TMDB tags posters with a language and, for regional variants, a
-country (`fr`/`FR` for France, `fr`/`CA` for Québec). For `fr-FR`, posters are ranked:
-exact language and region, then the same language (any or no region), then textless
-artwork, then English, then anything else. Within a tier, posters at least as large as
-their on-panel size come first (a smaller one would have to be enlarged and look soft),
-then the best rated (`vote_average`, then `vote_count`).
-
-**Resolution.** With `tmdb.image_size: auto` (default), the poster's on-panel width is
-computed for the configured panel and orientation (987 px on a 13.3" portrait frame,
-1296 px on a 31.5" one) and the smallest TMDB size that covers it *and* is a real downscale
-of the original is downloaded (`w780` or `w1280`), else the `original`. TMDB silently
-upscales when asked for more pixels than the original has, so a bigger size is never
-requested for a small original. `details.poster_size` and `details.poster_original_width`
-report the choice.
-
-**Fallbacks.** When TMDB is not configured, has no match or fails: `fallback_base64` /
-`fallback_url`, then `./data/assets/tmdb_fallback.png` if you provide one, then a title card
-(set `tmdb.fallback_title_card: false` to get the TMDB error instead). `details.fallback`
-tells which one was used.
-
-A non-ephemeral poster (`"ephemeral": false`) becomes the rule replayed by
-`POST /api/refresh`, and `"kind": "tmdb"` entries can join the [Smart Mix](#smart-mix-and-smart-search)
-(`{"kind": "tmdb", "params": {"query": "Amélie", "media_type": "movie"}, "weight": 1}`).
-`POST /api/display/media` is a deprecated alias.
-
-## Now playing (music)
-
-`POST /api/display/now-playing` shows the cover of the track that is playing with the
-`album` template.
-
-```bash
-curl -X POST http://localhost:8080/api/display/now-playing -H 'Content-Type: application/json' \
-  -d '{"title": "So What", "artist": "Miles Davis", "album": "Kind of Blue",
-       "duration_seconds": 545, "position_seconds": 12, "style": "vinyl"}'
-```
-
-| Request field | Meaning |
-| --- | --- |
-| `title`, `artist`, `album` | Track details (`media_title`, `media_artist`, `media_album_name` in Home Assistant). `artist` is required, plus `title` or `album` |
-| `show_title` | Print the track title on the cover (default `music.show_track_title`, off). See below |
-| `artwork_url`, `artwork_base64` | Cover provided by the player (base64 is tried first) |
-| `enrich_artwork` | When no usable cover was provided, look one up (default true; also `music.enrich_artwork`) |
-| `style` | `sleeve` or `vinyl` (default `music.default_style`) |
-| `duration_seconds`, `position_seconds`, `ttl_seconds` | When the cover expires (see below) |
-| `ephemeral`, `hold_minutes`, `push_to_fraimic` | As for posters |
-
-**Track title and deduplication.** By default the cover shows the artist and the album, not
-the track title (`music.show_track_title`, or `show_title` per request). The title only
-counts in the picture's identity when it is printed, so while an album plays, every track
-resolves to the *same* picture: the call returns `deduplicated: true`, nothing is sent to
-the frame (no e-ink refresh) and only the expiry is extended. The frame refreshes when the
-album, the artist or the style changes. Without an album, the title is always printed (it is
-the only thing that tells tracks apart). Keep calling the endpoint on every track change.
-**Breaking change:** before, each track was a new picture with its title; set
-`music.show_track_title: true` to get that back.
-
-**Cover lookup.** No API key is needed: the
-[Deezer](https://developers.deezer.com/api) public search (1000x1000 `cover_xl`), then
-[MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org)
-(studio albums are preferred over compilations, live albums and videos; requests are
-rate-limited to one per second as MusicBrainz asks and retried when it throttles). Covers
-are requested for their on-panel size: Deezer at JPEG quality 100 (1000 px, or 1400 px
-when the cover is displayed larger), the Cover Art Archive at 1200 px (its original when
-larger is needed). Lookups are cached in memory
-(`music.lookup_cache_size`). Without any cover, a typographic card is shown. Disable a
-service with `music.deezer_enabled` / `music.musicbrainz_enabled`.
-
-**Lifetime.** The cover expires when the track should be over: `duration_seconds -
-position_seconds + music.ttl_grace_seconds` (30), or `ttl_seconds`, or
-`music.default_ttl_minutes` (10). Sending the track that is already displayed only moves
-its expiry (`"deduplicated": true` in the response): nothing is rendered or sent again, so
-the Home Assistant automation can fire on every attribute change without waking a
-battery-powered frame.
-
-## Ephemeral images and the queue
-
-A push with `"ephemeral": true` (the default for posters, covers and smart searches) is
-temporary: it never becomes the image to come back to, nor the rule replayed by
-`POST /api/refresh`.
-
-- **Expiry.** Posters and covers carry an `expires_at`. When it passes, the previous
-  non-ephemeral image becomes the current image again. It is re-sent only if the frame may
-  not be showing it: a deep-sleeping frame that never received the cover is left alone,
-  and an expired image is dropped from the queue instead of being uploaded when the frame
-  wakes up.
-- **Cancellation.** `DELETE /api/queue/ephemeral` (e.g. playback paused or stopped) drops
-  a queued ephemeral image and restores the previous one immediately. It is idempotent
-  (`"cancelled": false` when nothing was ephemeral).
-- **No previous image yet?** A refresh of the active rule runs in the background instead.
-- Ending an ephemeral image also lifts its `hold_minutes` protection; it does not restart
-  the refresh timer.
-
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/queue` | The upload waiting for the frame (expired images are never listed), the last delivery, and the ephemeral image shown or queued with its `expires_at` |
-| `DELETE /api/queue/ephemeral` | Cancel the ephemeral image now: `cancelled`, `dropped_pending`, `reverted`, `pushed_base`, `refreshing` |
-
-`GET /api/status` includes the same `ephemeral` block. The last successful delivery is kept
-in `./data/last_delivery.json`, so what the frame shows is still known after a restart.
-
-## Home Assistant: TV and music
-
-The app must be able to reach Home Assistant to download `entity_picture` (add its host
-to `URL_ALLOWLIST` when `BLOCK_PRIVATE_URLS=true`). Replace `media_player.living_room` and
-`http://homeassistant.lan:8123` with yours. Picture URLs embed short-lived access tokens;
-the app never writes them to its logs.
-
-```yaml
-rest_command:
-  frame_now_playing:
-    url: http://smart-frame.lan:8080/api/display/now-playing
-    method: POST
-    content_type: "application/json; charset=utf-8"
-    timeout: 30
-    headers:
-      X-API-Key: !secret smart_frame_api_key   # when APP_API_KEY or ADMIN_PASSWORD is set
-    payload: >-
-      {% set p = 'media_player.living_room' %}
-      {% set pic = state_attr(p, 'entity_picture') %}
-      {{ {
-        "title": state_attr(p, 'media_title'),
-        "artist": state_attr(p, 'media_artist') or 'Unknown artist',
-        "album": state_attr(p, 'media_album_name'),
-        "artwork_url": ('http://homeassistant.lan:8123' ~ pic) if pic else none,
-        "duration_seconds": state_attr(p, 'media_duration'),
-        "position_seconds": state_attr(p, 'media_position')
-      } | to_json }}
-  frame_tv_poster:
-    url: http://smart-frame.lan:8080/api/display/tmdb
-    method: POST
-    content_type: "application/json; charset=utf-8"
-    timeout: 30
-    headers:
-      X-API-Key: !secret smart_frame_api_key
-    payload: >-
-      {% set p = 'media_player.living_room' %}
-      {% set pic = state_attr(p, 'entity_picture') %}
-      {% set series = state_attr(p, 'media_series_title') %}
-      {{ {
-        "query": series or state_attr(p, 'media_title'),
-        "media_type": 'tv' if series else 'movie',
-        "season": state_attr(p, 'media_season') if series else none,
-        "fallback_url": ('http://homeassistant.lan:8123' ~ pic) if pic else none,
-        "ttl_minutes": [((state_attr(p, 'media_duration') or 7200) / 60) | int + 15, 1440] | min
-      } | to_json }}
-  frame_cancel_ephemeral:
-    url: http://smart-frame.lan:8080/api/queue/ephemeral
-    method: DELETE
-    headers:
-      X-API-Key: !secret smart_frame_api_key
-
-automation:
-  - alias: Frame - now playing
-    mode: queued
-    trigger:
-      - platform: state
-        entity_id: media_player.living_room
-        to: playing
-      - platform: state
-        entity_id: media_player.living_room
-        attribute: media_title
-    condition:
-      - condition: state
-        entity_id: media_player.living_room
-        state: playing
-    action:
-      - choose:
-          - conditions: "{{ state_attr('media_player.living_room', 'media_content_type') == 'music' }}"
-            sequence:
-              - service: rest_command.frame_now_playing
-          - conditions: "{{ state_attr('media_player.living_room', 'media_content_type') in ['movie', 'tvshow', 'episode'] }}"
-            sequence:
-              - service: rest_command.frame_tv_poster
-  - alias: Frame - playback stopped
-    trigger:
-      - platform: state
-        entity_id: media_player.living_room
-        from: playing
-        for: "00:02:00"   # ignore short pauses
-    action:
-      - service: rest_command.frame_cancel_ephemeral
-```
-
-The now-playing call is deduplicated, so the `media_title` trigger only refreshes the frame
-when the album changes (every track with the title printed, if you enable `show_track_title`). A deep-sleeping frame wakes up to the right picture: covers whose
-song has ended are dropped from the queue, and the previous photo comes back.
-
-## Development
-
-```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-ruff check . && ruff format --check . && mypy app && pytest
-DATA_DIR=./data python -m app      # serve on http://localhost:8080
-```
-
-`python scripts/quality_ab.py` renders a dark photo, a bright photo, a poster and an album
-cover with the previous look (official + atkinson) and with `auto`, side by side (composition
-and dithered), into `preview_gallery/quality-ab/`; `--dark`/`--bright` take your own photos,
-otherwise a CLIP search on Immich is used. `python scripts/preview_gallery.py` renders posters
-and covers on all four frame layouts.
-
-`python scripts/template_samples.py` renders 8 movie posters and 8 album covers with the
-templates (composition and dithered panel simulation, plus contact sheets) into
-`data/template-samples/`, using the real TMDB / Deezer / MusicBrainz lookups but never
-the frame. `--panel 315` and `--orientation landscape` preview other frames.
+| [Installation and Deployment](https://github.com/ant1fr/Smart-Frame-Engine/wiki/Installation-and-Deployment) | Docker, Synology, Portainer, reverse proxy, host networking |
+| [Configuration Reference](https://github.com/ant1fr/Smart-Frame-Engine/wiki/Configuration-Reference) | Every setting, Smart Mix, Family Mode, Spectra 6 dithering |
+| [Immich and TMDB Setup](https://github.com/ant1fr/Smart-Frame-Engine/wiki/Immich-and-TMDB-Setup) | API keys, pickers, the Locked Folder rule |
+| [API Reference](https://github.com/ant1fr/Smart-Frame-Engine/wiki/API-Reference) | Authentication and every endpoint (also live at `/docs`) |
+| [Home Assistant Integration](https://github.com/ant1fr/Smart-Frame-Engine/wiki/Home-Assistant-Integration) | Automations, discovery |
+
+## Feedback, issues & roadmap
+
+This is a young project and it gets better with your help. 💙
+
+- 🐛 **Found a bug?** [Open an issue](https://github.com/ant1fr/Smart-Frame-Engine/issues/new/choose): the template asks only for what helps.
+- 💡 **Have an idea or a new image source in mind?** Open a feature request, or start a
+  [discussion](https://github.com/ant1fr/Smart-Frame-Engine/discussions).
+- 🗺️ **Curious what is next?** Follow the [roadmap board](https://github.com/users/ant1fr/projects/1) ([summary](ROADMAP.md)): editorial templates (quotes,
+  weather, agenda, collages), more engines and generative art are on the way.
+- 🛠️ **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md). Small fixes are welcome too.
+- 🔐 **Security issue?** Please report it privately: see [SECURITY.md](SECURITY.md).
+
+Show me your wall: a photo of your frame in the discussions makes my day.
 
 ## Credits
 
-The palette, color metric, Atkinson kernel and `.bin` layouts follow the official
-[Fraimic Bin Converter](https://github.com/Fraimic/fraimic_bin_converter) (MIT), which
-builds on Toon-nooT's
-[PhotoPainter Spectra 6 converter](https://github.com/Toon-nooT/PhotoPainter-E-Ink-Spectra-6-image-converter).
+The Spectra 6 palette, color metric, Atkinson kernel and `.bin` layouts follow the official
+[Fraimic Bin Converter](https://github.com/Fraimic/fraimic_bin_converter) (MIT), which builds on
+Toon-nooT's [PhotoPainter Spectra 6 converter](https://github.com/Toon-nooT/PhotoPainter-E-Ink-Spectra-6-image-converter).
+The `soft` / `vivid` curves and dithering kernels are adapted from the MIT-licensed
+[Stillroom](https://github.com/WillCroPoint/stillroom) converter by WillCroPoint (not a Fraimic project).
+Templates use the [Inter](https://github.com/rsms/inter) typeface (SIL OFL 1.1).
 
-The `soft` / `vivid` curves and the dithering kernels follow the MIT-licensed
-stillroom converter (© 2026 Fraimic).
-
-Templates use the [Inter](https://github.com/rsms/inter) typeface by Rasmus Andersson,
-bundled under the SIL Open Font License 1.1 (`app/assets/fonts/OFL.txt`).
-
-This product uses the TMDB API but is not endorsed or certified by
-[TMDB](https://www.themoviedb.org). Album covers come from the
-[Deezer API](https://developers.deezer.com), [MusicBrainz](https://musicbrainz.org) and the
-[Cover Art Archive](https://coverartarchive.org).
+This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org).
+Album covers come from the [Deezer API](https://developers.deezer.com),
+[MusicBrainz](https://musicbrainz.org) and the [Cover Art Archive](https://coverartarchive.org).
+Not affiliated with Fraimic or Immich.
 
 ## License
 

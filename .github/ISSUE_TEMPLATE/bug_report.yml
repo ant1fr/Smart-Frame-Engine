@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time! Please do not paste API keys, passwords or private IPs.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got (screenshots welcome).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open Settings > Immich ...\n2. ..."
+  - type: input
+    id: version
+    attributes:
+      label: Smart Frame Engine version
+      description: Shown in GET /api/status, or the image tag.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options: [Docker Compose, Portainer, Synology Container Manager, Python (from source), Other]
+  - type: dropdown
+    id: power
+    attributes:
+      label: Frame power mode
+      options: [continuous, deepsleep, Not sure / not relevant]
+  - type: input
+    id: immich
+    attributes:
+      label: Immich version (if relevant)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "docker logs smart-frame-engine (keys are masked, but check before pasting)."
+      render: text

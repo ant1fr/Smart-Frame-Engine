@@ -1,0 +1,20 @@
+# Categories of the auto-generated release notes (gh release create --generate-notes).
+# Pull requests are sorted by label; the Conventional Commit prefix of the title is
+# mapped to a label by the PR template checklist.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+    authors:
+      - dependabot
+  categories:
+    - title: "✨ Features"
+      labels: [enhancement, feature, feat]
+    - title: "🐛 Fixes"
+      labels: [bug, fix]
+    - title: "📚 Documentation"
+      labels: [documentation, docs]
+    - title: "🔧 Maintenance"
+      labels: [chore, maintenance, dependencies, ci, refactor]
+    - title: "Other changes"
+      labels: ["*"]
