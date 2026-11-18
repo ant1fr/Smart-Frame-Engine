@@ -1,9 +1,10 @@
 # Roadmap
 
-Where Smart Frame Engine is, and where it is going. Dates are intentionally absent: this is a
-hobby-scale project and priorities follow what people actually use. Progress is tracked in the
-[milestones](https://github.com/ant1fr/Smart-Frame-Engine/milestones); ideas and votes are
-welcome in [Discussions](https://github.com/ant1fr/Smart-Frame-Engine/discussions).
+Live planning happens on the **[roadmap board](https://github.com/users/ant1fr/projects/1)**
+(GitHub Projects): every item is an issue you can comment on or vote for. This file is the
+short, stable summary. Dates are intentionally absent: this is a hobby-scale project and
+priorities follow what people actually use. Ideas are welcome in
+[Discussions](https://github.com/ant1fr/Smart-Frame-Engine/discussions).
 
 ## v1.0.0: the foundation (done)
 
@@ -27,7 +28,7 @@ welcome in [Discussions](https://github.com/ant1fr/Smart-Frame-Engine/discussion
 
 New picture types built from data instead of photos, in the same Spectra 6-friendly style:
 
-- [ ] **Quote** card: a quote of the day, or yours
+- [ ] **Quote** card: a quote of the day, or yours ([#23](https://github.com/ant1fr/Smart-Frame-Engine/issues/23))
 - [ ] **Weather** card: current conditions and a short forecast
 - [ ] **Agenda** card: today's calendar events
 - [ ] **Collage**: several photos composed on one frame

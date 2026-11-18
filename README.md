@@ -103,7 +103,7 @@ This is a young project and it gets better with your help. 💙
 - 🐛 **Found a bug?** [Open an issue](https://github.com/ant1fr/Smart-Frame-Engine/issues/new/choose): the template asks only for what helps.
 - 💡 **Have an idea or a new image source in mind?** Open a feature request, or start a
   [discussion](https://github.com/ant1fr/Smart-Frame-Engine/discussions).
-- 🗺️ **Curious what is next?** Read the [roadmap](ROADMAP.md): editorial templates (quotes,
+- 🗺️ **Curious what is next?** Follow the [roadmap board](https://github.com/users/ant1fr/projects/1) ([summary](ROADMAP.md)): editorial templates (quotes,
   weather, agenda, collages), more engines and generative art are on the way.
 - 🛠️ **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md). Small fixes are welcome too.
 - 🔐 **Security issue?** Please report it privately: see [SECURITY.md](SECURITY.md).
