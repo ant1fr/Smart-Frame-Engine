@@ -115,8 +115,9 @@ Show me your wall: a photo of your frame in the discussions makes my day.
 The Spectra 6 palette, color metric, Atkinson kernel and `.bin` layouts follow the official
 [Fraimic Bin Converter](https://github.com/Fraimic/fraimic_bin_converter) (MIT), which builds on
 Toon-nooT's [PhotoPainter Spectra 6 converter](https://github.com/Toon-nooT/PhotoPainter-E-Ink-Spectra-6-image-converter).
-The `soft` / `vivid` curves and dithering kernels follow the MIT-licensed stillroom converter
-(© 2026 Fraimic). Templates use the [Inter](https://github.com/rsms/inter) typeface (SIL OFL 1.1).
+The `soft` / `vivid` curves and dithering kernels are adapted from the MIT-licensed
+[Stillroom](https://github.com/WillCroPoint/stillroom) converter by WillCroPoint (not a Fraimic project).
+Templates use the [Inter](https://github.com/rsms/inter) typeface (SIL OFL 1.1).
 
 This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org).
 Album covers come from the [Deezer API](https://developers.deezer.com),

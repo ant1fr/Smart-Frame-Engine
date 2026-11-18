@@ -6,10 +6,10 @@ step is skipped, making the output identical to the official converter's ``proce
 Enhancement must run on the picture only (before letterbox padding) so flat bars do
 not skew the contrast pivot and filters do not bleed across the picture/bar seam.
 
-The ``soft`` and ``vivid`` profiles (adapted from the MIT-licensed stillroom converter, based
-on the official Fraimic converter) work on luminance in floating point with
-endpoint-preserving curves, and compress chroma toward that luminance *only* when it would
-leave the RGB gamut - one scale for all three channels, so hue is preserved instead of
+The ``soft`` and ``vivid`` profiles (adapted from the MIT-licensed Stillroom converter by
+WillCroPoint, itself based on the official Fraimic converter) work on luminance in floating
+point with endpoint-preserving curves, and compress chroma toward that luminance *only* when
+it would leave the RGB gamut - one scale for all three channels, so hue is preserved instead of
 clipping individual channels. ``natural`` leaves the source tones untouched. No profile can
 recover detail that is already clipped, nor remove the limits of a six-color display.
 """
