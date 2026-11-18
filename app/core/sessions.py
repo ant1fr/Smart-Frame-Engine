@@ -9,7 +9,6 @@ everyone out. Nothing is stored server-side.
 from __future__ import annotations
 
 import base64
-import hashlib
 import hmac
 import secrets
 import threading
@@ -33,10 +32,8 @@ def _b64(data: bytes) -> str:
 
 def signing_key(session_secret: str, password: str) -> bytes:
     """Key of the session signatures; changes with the secret or the password."""
-    fingerprint = hashlib.sha256(password.encode("utf-8")).digest()
-    return hmac.new(
-        session_secret.encode("utf-8"), b"sfe-session:" + fingerprint, "sha256"
-    ).digest()
+    message = b"sfe-session:" + password.encode("utf-8")
+    return hmac.new(session_secret.encode("utf-8"), message, "sha256").digest()
 
 
 def _signature(key: bytes, payload: str) -> str:
