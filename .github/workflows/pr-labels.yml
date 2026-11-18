@@ -1,0 +1,35 @@
+name: PR labels
+
+# Labels a pull request from its Conventional Commit title (feat:, fix:, docs:, chore:...),
+# which is what .github/release.yml uses to categorize the release notes.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    name: Label from title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Apply the label
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const match = /^(\w+)(\([^)]*\))?!?:/.exec(title);
+            const labels = {
+              feat: "feat", fix: "fix", docs: "docs", chore: "chore", ci: "chore",
+              build: "chore", refactor: "chore", perf: "chore", test: "chore", style: "chore",
+            };
+            const label = match && labels[match[1].toLowerCase()];
+            if (!label) return;
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [label],
+            });

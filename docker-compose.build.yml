@@ -1,0 +1,22 @@
+# Build the image from the local source tree (for development), instead of pulling it:
+#
+#   docker compose -f docker-compose.build.yml up -d --build
+#
+# Same settings as docker-compose.yml (HOST_PORT, DATA_DIR, PUID, PGID), but the data lives in
+# ./data by default so it is easy to inspect while developing.
+services:
+  smart-frame-engine:
+    build: .
+    image: smart-frame-engine:dev
+    container_name: smart-frame-engine
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      - ${DATA_DIR:-./data}:/data
