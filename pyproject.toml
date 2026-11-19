@@ -84,6 +84,8 @@ known-first-party = ["app"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# Dump every thread's stack when one test runs longer than this (diagnoses CI hangs).
+faulthandler_timeout = 300
 addopts = "-ra -m 'not slow'"
 markers = ["slow: long-running performance tests (run with `pytest -m slow`)"]
 

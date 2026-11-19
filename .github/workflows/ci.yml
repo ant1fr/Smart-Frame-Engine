@@ -17,6 +17,7 @@ jobs:
   lint-test:
     name: Lint & test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -47,7 +48,7 @@ jobs:
         run: mypy app
 
       - name: Pytest
-        run: pytest
+        run: pytest -v
 
       - name: Pytest (slow / performance)
         run: pytest -m slow
