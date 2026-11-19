@@ -509,7 +509,10 @@ class DeliveryService:
                 if timeout is None:
                     await self._wake.wait()
                 else:
-                    await asyncio.wait_for(self._wake.wait(), timeout)
+                    # asyncio.timeout, not wait_for: on Python 3.11 wait_for can swallow a
+                    # cancellation, and stop() would then wait for this loop forever.
+                    async with asyncio.timeout(timeout):
+                        await self._wake.wait()
             except TimeoutError:
                 timed_out = True
             self._wake.clear()

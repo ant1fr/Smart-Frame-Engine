@@ -249,7 +249,10 @@ class EphemeralService:
     async def _run(self) -> None:
         while True:
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._wake.wait(), self._timeout())
+                # asyncio.timeout, not wait_for: on Python 3.11 wait_for can swallow a
+                # cancellation, and stop() would then wait for this loop forever.
+                async with asyncio.timeout(self._timeout()):
+                    await self._wake.wait()
             self._wake.clear()
             try:
                 await self.expire_if_due()
