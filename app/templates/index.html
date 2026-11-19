@@ -248,7 +248,7 @@
               <li class="flex justify-between"><span>Immich</span><span class="text-xs" :class="status && status.services.immich ? 'text-green-600 dark:text-green-400' : 'text-slate-400'" x-text="status && status.services.immich ? 'configured' : 'not configured'"></span></li>
               <li class="flex justify-between"><span>TMDB</span><span class="text-xs" :class="status && status.services.tmdb ? 'text-green-600 dark:text-green-400' : 'text-slate-400'" x-text="status && status.services.tmdb ? 'configured' : 'not configured'"></span></li>
               <li class="flex justify-between"><span>Smart Mix</span><span class="text-xs" x-text="status && status.scheduler.smart_mix.enabled ? 'on' : 'off'"></span></li>
-              <li class="flex justify-between"><span>Version</span><span class="text-xs text-slate-500" x-text="status && status.version"></span></li>
+              <li class="flex justify-between"><span>Version</span><span class="text-xs text-slate-500" x-text="status && (status.release || status.version)"></span></li>
             </ul>
           </div>
         </div>
