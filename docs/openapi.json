@@ -677,6 +677,46 @@
         "title": "ClearedResponse",
         "type": "object"
       },
+      "Condition": {
+        "additionalProperties": false,
+        "description": "A test on one field of the rule being edited.\n\n``any_of`` holds when the field equals one of the values (an unset field equals ``null``);\n``filled`` holds when the field is set (``true``) or not (``false``): ``null``, ``\"\"``,\n``false`` and an empty list count as not set, while an empty object counts as set. Both\ngiven means both must hold.",
+        "properties": {
+          "any_of": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Any Of"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "filled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filled"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "Condition",
+        "type": "object"
+      },
       "ConfigErrorResponse": {
         "description": "Validation error payload (never echoes submitted values).",
         "properties": {
@@ -1398,6 +1438,149 @@
           "has_base"
         ],
         "title": "EphemeralView",
+        "type": "object"
+      },
+      "FieldSpec": {
+        "additionalProperties": false,
+        "description": "One parameter of a rule, as a form presents it.",
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/JsonValue",
+            "description": "Value used when the key is unset"
+          },
+          "group": {
+            "default": "basic",
+            "description": "advanced fields start collapsed",
+            "enum": [
+              "basic",
+              "advanced"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "help": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help"
+          },
+          "key": {
+            "description": "Key in the rule's params (a field of the request model)",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "nullable": {
+            "default": false,
+            "description": "segmented only: offer a 'Default' choice that unsets the key",
+            "title": "Nullable",
+            "type": "boolean"
+          },
+          "options": {
+            "description": "Choices of a segmented field",
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "placeholder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placeholder"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "required_when": {
+            "description": "The field is required when all conditions hold",
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "title": "Required When",
+            "type": "array"
+          },
+          "show_when": {
+            "description": "The field is shown only when all conditions hold",
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "title": "Show When",
+            "type": "array"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "date only: UTC time of day appended to the chosen day (HH:MM:SS)",
+            "title": "Time"
+          },
+          "widget": {
+            "enum": [
+              "segmented",
+              "text",
+              "text_list",
+              "int",
+              "bool",
+              "date",
+              "person_list",
+              "album",
+              "account_list",
+              "on_this_day"
+            ],
+            "title": "Widget",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "widget"
+        ],
+        "title": "FieldSpec",
         "type": "object"
       },
       "FlagInput": {
@@ -2401,6 +2584,36 @@
         "title": "OnThisDay",
         "type": "object"
       },
+      "Option": {
+        "description": "One choice of a ``segmented`` field.",
+        "properties": {
+          "help": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "Option",
+        "type": "object"
+      },
       "PendingUpload": {
         "description": "Metadata of the image waiting for the frame (persisted as ``pending.json``).",
         "properties": {
@@ -2563,6 +2776,25 @@
         "title": "PersonView",
         "type": "object"
       },
+      "Placeholder": {
+        "description": "A ``{name}`` usable in the text of a rule.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "Placeholder",
+        "type": "object"
+      },
       "PlaygroundResult": {
         "description": "Body of ``POST /api/playground/render``.",
         "properties": {
@@ -2640,6 +2872,59 @@
           }
         },
         "title": "PlaygroundVariant",
+        "type": "object"
+      },
+      "Preset": {
+        "additionalProperties": false,
+        "description": "A ready-made rule offered when adding an entry.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "edit_first": {
+            "default": false,
+            "description": "The rule needs a choice from the user: open the editor",
+            "title": "Edit First",
+            "type": "boolean"
+          },
+          "icon": {
+            "description": "One emoji shown on the preset tile",
+            "title": "Icon",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "weight": {
+            "default": 1.0,
+            "description": "Suggested weight",
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "icon",
+          "params"
+        ],
+        "title": "Preset",
         "type": "object"
       },
       "QueueView": {
@@ -2913,6 +3198,104 @@
           }
         },
         "title": "ResetRequest",
+        "type": "object"
+      },
+      "RuleKindSpec": {
+        "additionalProperties": false,
+        "description": "Everything a UI needs to edit the rules of one source kind.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldSpec"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "icon": {
+            "title": "Icon",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/Preset"
+            },
+            "title": "Presets",
+            "type": "array"
+          },
+          "service": {
+            "anyOf": [
+              {
+                "enum": [
+                  "immich",
+                  "tmdb"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Service that must be configured for the rule to run",
+            "title": "Service"
+          },
+          "summary": {
+            "description": "Recipe of the one-line description; the kind label is used when it is empty",
+            "items": {
+              "$ref": "#/components/schemas/SummaryPart"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "description",
+          "icon",
+          "fields",
+          "presets",
+          "summary"
+        ],
+        "title": "RuleKindSpec",
+        "type": "object"
+      },
+      "RuleKindsResponse": {
+        "description": "What each source kind accepts, for building a rule editor.",
+        "properties": {
+          "kinds": {
+            "description": "Descriptor of every runnable source kind that has one; a kind listed in supported_kinds of GET /api/smart-mix but missing here can only be edited as raw params",
+            "items": {
+              "$ref": "#/components/schemas/RuleKindSpec"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "placeholders": {
+            "description": "{name} placeholders a rule's text may contain, expanded on every run",
+            "items": {
+              "$ref": "#/components/schemas/Placeholder"
+            },
+            "title": "Placeholders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kinds",
+          "placeholders"
+        ],
+        "title": "RuleKindsResponse",
         "type": "object"
       },
       "SchedulerSnapshot": {
@@ -3520,6 +3903,39 @@
           "services"
         ],
         "title": "StatusResponse",
+        "type": "object"
+      },
+      "SummaryPart": {
+        "additionalProperties": false,
+        "description": "One piece of the one-line description of a rule, e.g. ``Album: Holidays``.\n\nThe piece is included when ``field`` is filled (if given) and every ``when`` condition holds.\n``template`` may use ``{value}``: lists are joined with ``, ``.",
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "template": {
+            "title": "Template",
+            "type": "string"
+          },
+          "when": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "title": "When",
+            "type": "array"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "SummaryPart",
         "type": "object"
       },
       "TextInput": {
@@ -5853,6 +6269,33 @@
           }
         ],
         "summary": "Boost or override the Smart Mix temporarily",
+        "tags": [
+          "smart-mix"
+        ]
+      }
+    },
+    "/api/smart-mix/kinds": {
+      "get": {
+        "description": "Fields, choices, presets and summary recipe of each source kind (providers own them).",
+        "operationId": "get_rule_kinds_api_smart_mix_kinds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleKindsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Describe the rules each source kind accepts",
         "tags": [
           "smart-mix"
         ]

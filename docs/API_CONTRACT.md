@@ -70,6 +70,7 @@ one to a real endpoint. Within a contract version they are only ever **added**.
 | `random_discovery` | `PUT /api/config` (`smart_mix.discovery_share`) | Occasional whole-library surprise photo. |
 | `smart_mix` | `GET /api/smart-mix` | Inspect the weighted playlist. |
 | `smart_mix_context` | `POST /api/smart-mix/context` | Set a temporary playlist boost. |
+| `smart_mix_kinds` | `GET /api/smart-mix/kinds` | Describe the fields, choices, presets and summary of each rule kind, to build a rule editor. |
 | `title_card` | `POST /api/display/title-card` | Show a text card. |
 | `upload_image` | `POST /api/display/upload` | Show an image you send. |
 
@@ -182,6 +183,7 @@ Generated from `openapi.json` by `scripts/export_openapi.py`; do not edit by han
 | `GET` | `/api/smart-mix` | Show the Smart Mix playlist |
 | `POST` | `/api/smart-mix/context` | Boost or override the Smart Mix temporarily |
 | `DELETE` | `/api/smart-mix/context` | Remove the Smart Mix boost |
+| `GET` | `/api/smart-mix/kinds` | Describe the rules each source kind accepts |
 | `GET` | `/api/status` | System status |
 | `GET` | `/api/tmdb/search` | Search movies and series (for the web UI picker) |
 | `POST` | `/api/tmdb/test` | Test a TMDB API key |
@@ -226,6 +228,10 @@ changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
   image tag (SemVer, `1.0.0-rc.2`), with `+<build>` appended for images built outside a release
   tag. It is for display only; `version` (PEP 440) on `/api/status` and `/api/health` is
   unchanged. No `api_version` change.
+- New capability `smart_mix_kinds`: `GET /api/smart-mix/kinds` returns a descriptor per runnable
+  source kind (`kinds`: fields, widgets, choices, presets, summary recipe) and the `placeholders`
+  a rule's text may use. Providers own their descriptor; a kind without one has to be edited as
+  raw `params`. API-key protected like the rest of `/api/smart-mix`. No `api_version` change.
 
 ### 1.1 (engine 1.0.0rc2), additive
 
