@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smart-frame-engine"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "Fetch photos and posters from modular sources, optimize them for color eInk, and push them to a Fraimic frame."
 readme = "README.md"
 license = "MIT"
@@ -84,6 +84,8 @@ known-first-party = ["app"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# Dump every thread's stack when one test runs longer than this (diagnoses CI hangs).
+faulthandler_timeout = 300
 addopts = "-ra -m 'not slow'"
 markers = ["slow: long-running performance tests (run with `pytest -m slow`)"]
 

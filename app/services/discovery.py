@@ -1,11 +1,12 @@
 """mDNS / Zeroconf: advertise ``_smartframe._tcp.local.`` so other devices can find the engine.
 
 The record carries TXT properties ``version``, ``api_version``, ``min_api_version`` (the
-compatibility handshake of ``docs/API_CONTRACT.md``), ``path`` (``ROOT_PATH``) and ``auth``
-(``open``, ``key`` or ``password``). The capability list is not mirrored (a TXT string is
-capped at 255 bytes): clients read it from ``GET /api/health`` after discovery.
-Advertising is best effort: any failure (no multicast
-in a bridged container, no network...) is logged and ignored, the engine runs regardless.
+compatibility handshake of ``docs/API_CONTRACT.md``), ``instance_id`` (stable random id),
+``path`` (``ROOT_PATH``) and ``auth`` (``open``, ``key`` or ``password``). The service name is
+the unique ``instance_name``. The capability list is not mirrored (a TXT string is capped at 255
+bytes): clients read it from ``GET /api/health`` after discovery.
+Advertising is best effort: any failure (no multicast in a bridged container, no network...)
+is logged and ignored, the engine runs regardless.
 In Docker, mDNS needs ``network_mode: host``.
 """
 
@@ -55,6 +56,7 @@ class ZeroconfAdvertiser:
         api_version: int = API_VERSION,
         min_api_version: int = MIN_API_VERSION,
         instance: str = "Smart Frame Engine",
+        instance_id: str = "",
         zeroconf_factory: Callable[[], Any] = lambda: AsyncZeroconf(ip_version=IPVersion.V4Only),
         addresses: Callable[[], list[str]] = local_addresses,
     ) -> None:
@@ -70,6 +72,7 @@ class ZeroconfAdvertiser:
                 "min_api_version": str(min_api_version),
                 "path": root_path or "/",
                 "auth": auth,
+                **({"instance_id": instance_id} if instance_id else {}),
             },
             server=f"{host}.local.",
             parsed_addresses=addresses(),
@@ -86,7 +89,7 @@ class ZeroconfAdvertiser:
         """Advertise the service; ``False`` (logged) when it could not be registered."""
         try:
             zeroconf = self._factory()
-            await zeroconf.async_register_service(self._info)
+            await zeroconf.async_register_service(self._info, allow_name_change=True)
         except Exception as exc:
             logger.warning("Zeroconf advertising disabled: %s: %s", type(exc).__name__, exc)
             return False

@@ -75,6 +75,12 @@ class EnvSettings(BaseSettings):
         description="Advertise _smartframe._tcp.local. over mDNS (needs host networking in Docker)",
     )
 
+    instance_name: str = Field(
+        default="",
+        description="Name of this engine (mDNS service name, shown to clients); "
+        "default 'Smart Frame Engine <id prefix>'",
+    )
+
     max_upload_mb: int = Field(default=20, ge=1, le=200, description="Max image size in MB")
     block_private_urls: bool = Field(
         default=False,
@@ -206,6 +212,11 @@ class EnvSettings(BaseSettings):
     def last_delivery_path(self) -> Path:
         """Location of the last successful frame delivery (what the frame shows)."""
         return self.data_dir / "last_delivery.json"
+
+    @property
+    def instance_path(self) -> Path:
+        """Stable random instance id (not a secret)."""
+        return self.data_dir / "instance.json"
 
     @property
     def secrets_path(self) -> Path:
