@@ -6,7 +6,11 @@
 # ./data by default so it is easy to inspect while developing.
 services:
   smart-frame-engine:
-    build: .
+    build:
+      context: .
+      args:
+        # Shown as "<version>+dev" in the UI so a local build is never mistaken for a release.
+        APP_BUILD: ${APP_BUILD:-dev}
     image: smart-frame-engine:dev
     container_name: smart-frame-engine
     restart: unless-stopped

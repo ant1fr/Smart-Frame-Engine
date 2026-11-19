@@ -248,7 +248,7 @@
               <li class="flex justify-between"><span>Immich</span><span class="text-xs" :class="status && status.services.immich ? 'text-green-600 dark:text-green-400' : 'text-slate-400'" x-text="status && status.services.immich ? 'configured' : 'not configured'"></span></li>
               <li class="flex justify-between"><span>TMDB</span><span class="text-xs" :class="status && status.services.tmdb ? 'text-green-600 dark:text-green-400' : 'text-slate-400'" x-text="status && status.services.tmdb ? 'configured' : 'not configured'"></span></li>
               <li class="flex justify-between"><span>Smart Mix</span><span class="text-xs" x-text="status && status.scheduler.smart_mix.enabled ? 'on' : 'off'"></span></li>
-              <li class="flex justify-between"><span>Version</span><span class="text-xs text-slate-500" x-text="status && status.version"></span></li>
+              <li class="flex justify-between"><span>Version</span><span class="text-xs text-slate-500" x-text="status && (status.release || status.version)"></span></li>
             </ul>
           </div>
         </div>
@@ -726,30 +726,28 @@
               <h3 class="card-title">Smart Mix</h3>
               <label class="ml-auto flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.smart_mix.enabled"> Enabled</label>
             </div>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Scheduled refreshes pick an entry at random, in proportion to its weight. <code>{season}</code>, <code>{month_name}</code>… in parameters are filled in each time.</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Each scheduled refresh picks one entry at random: the more often an entry comes up, the more you see it. Press <b>Save</b> to apply your changes.</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!mixRows.length">No entries yet. Add one to start mixing your sources.</p>
             <template x-for="(e, i) in mixRows" :key="i">
-              <div class="rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 p-4 space-y-3" :class="!e.enabled ? 'opacity-60' : ''">
-                <div class="flex flex-wrap items-center gap-3">
-                  <input class="input !w-48" x-model="e.label" placeholder="Label" maxlength="80">
-                  <select class="input !w-32" x-model="e.kind"><template x-for="k in mixKinds()"><option :value="k" x-text="k"></option></template></select>
-                  <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="e.enabled"> On</label>
-                  <span class="ml-auto text-xs text-slate-500 tabular-nums" x-show="mixChance(i) !== null" x-text="Math.round(mixChance(i) * 100) + '% of refreshes'"></span>
-                  <button type="button" class="btn !px-2" @click="mixRows.splice(i, 1)" aria-label="Remove entry">✕</button>
+              <div class="rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 p-3 sm:p-4 flex flex-wrap items-center gap-3" :class="!e.enabled ? 'opacity-60' : ''">
+                <div class="text-2xl w-8 text-center" aria-hidden="true" x-text="mixIcon(e.kind)"></div>
+                <button type="button" class="min-w-0 flex-1 basis-40 text-left" @click="openMixEdit(i)">
+                  <p class="font-medium truncate" x-text="e.label || mixSummary(e)"></p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 truncate" x-text="e.label ? mixSummary(e) : mixKindLabel(e.kind)"></p>
+                  <p class="text-xs text-amber-600 dark:text-amber-400" x-show="mixMissingService(e)" x-text="mixMissingService(e)"></p>
+                </button>
+                <div class="text-right text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                  <p x-text="mixLevel(e.weight)"></p>
+                  <p x-show="mixChance(i) !== null" x-text="Math.round(mixChance(i) * 100) + '% of refreshes'"></p>
                 </div>
-                <div class="flex items-center gap-3">
-                  <span class="text-xs text-slate-500 w-14">Weight</span>
-                  <input type="range" min="0.5" max="20" step="0.5" class="flex-1" x-model.number="e.weight">
-                  <input type="number" min="0.1" max="1000" step="0.1" class="input !w-20 !py-1" x-model.number="e.weight">
-                </div>
-                <details>
-                  <summary class="text-xs text-slate-500 cursor-pointer">Parameters (JSON body of the display endpoint)</summary>
-                  <textarea class="input font-mono text-xs mt-2" rows="4" x-model="e.paramsText" spellcheck="false"></textarea>
-                  <p class="text-xs text-red-600 dark:text-red-400" x-show="e.error" x-text="e.error"></p>
-                </details>
+                <label class="flex items-center gap-1 text-sm"><input type="checkbox" class="rounded" x-model="e.enabled" aria-label="Entry enabled"> On</label>
+                <button type="button" class="btn !px-3" @click="openMixEdit(i)">Edit</button>
+                <button type="button" class="btn !px-2" @click="duplicateMix(i)" aria-label="Duplicate entry" title="Duplicate">⧉</button>
+                <button type="button" class="btn !px-2 !text-red-600" @click="mixRows.splice(i, 1)" aria-label="Remove entry" title="Remove">✕</button>
               </div>
             </template>
             <div class="flex flex-wrap gap-2">
-              <button type="button" class="btn" @click="mixRows.push({label: '', kind: 'immich', weight: 1, enabled: true, paramsText: '{\n  &quot;mode&quot;: &quot;random&quot;\n}', error: ''})">Add entry</button>
+              <button type="button" class="btn-primary" @click="mixAdd = true">+ Add entry</button>
               <div class="ml-auto flex items-center gap-3 text-sm">
                 <label class="flex items-center gap-2"><input type="checkbox" class="rounded" x-model="draft.smart_mix.avoid_consecutive"> Avoid repeats</label>
                 <select class="input !w-auto !py-1" x-model="draft.smart_mix.hemisphere"><option value="north">Northern hemisphere</option><option value="south">Southern hemisphere</option></select>
@@ -831,6 +829,197 @@
     </section>
   </main>
 
+  <!-- Smart Mix: add an entry -->
+  <div x-cloak x-show="mixAdd" x-transition.opacity class="fixed inset-0 z-40 bg-black/60 flex items-end sm:items-center justify-center sm:p-4" @keydown.escape.window="mixAdd = false" @click.self="mixAdd = false">
+    <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 p-5 space-y-5" role="dialog" aria-modal="true" aria-label="Add a Smart Mix entry">
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold">Add an entry</h3>
+        <button type="button" class="btn ml-auto !px-2" @click="mixAdd = false" aria-label="Close">✕</button>
+      </div>
+      <template x-for="k in mixKindList()" :key="k.kind">
+        <div class="space-y-2">
+          <div>
+            <p class="text-sm font-medium"><span aria-hidden="true" x-text="k.icon"></span> <span x-text="k.label"></span></p>
+            <p class="text-xs text-slate-500 dark:text-slate-400" x-text="k.description"></p>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-2">
+            <template x-for="p in k.presets" :key="p.id">
+              <button type="button" class="text-left rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 p-3 hover:bg-slate-50 dark:hover:bg-slate-800" @click="addMixPreset(k.kind, p)">
+                <p class="text-sm font-medium"><span aria-hidden="true" x-text="p.icon"></span> <span x-text="p.label"></span></p>
+                <p class="text-xs text-slate-500 dark:text-slate-400" x-text="p.description"></p>
+              </button>
+            </template>
+            <button type="button" class="text-left rounded-xl ring-1 ring-slate-300 dark:ring-slate-700 p-3 hover:bg-slate-50 dark:hover:bg-slate-800" @click="addMixBlank(k.kind)">
+              <p class="text-sm font-medium">Start from scratch</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Set every option yourself.</p>
+            </button>
+          </div>
+        </div>
+      </template>
+      <template x-for="kind in mixUnknownKinds()" :key="kind">
+        <button type="button" class="w-full text-left rounded-xl ring-1 ring-slate-300 dark:ring-slate-700 p-3 hover:bg-slate-50 dark:hover:bg-slate-800" @click="addMixBlank(kind)">
+          <p class="text-sm font-medium">Custom rule · <span x-text="kind"></span></p>
+          <p class="text-xs text-slate-500 dark:text-slate-400">No form is available for this source: edit its parameters as JSON.</p>
+        </button>
+      </template>
+    </div>
+  </div>
+
+  <!-- Smart Mix: edit an entry (the form is generated from the descriptor of the kind) -->
+  <div x-cloak x-show="mixOpen" x-transition.opacity class="fixed inset-0 z-40 bg-black/60 flex items-end sm:items-center justify-center sm:p-4" @keydown.escape.window="mixCancel()" @click.self="mixCancel()">
+    <template x-if="mixEdit">
+      <div class="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 p-5 space-y-5" role="dialog" aria-modal="true" aria-label="Edit a Smart Mix entry">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl" aria-hidden="true" x-text="mixIcon(mixEdit.row.kind)"></span>
+          <div>
+            <h3 class="font-semibold" x-text="mixEdit.isNew ? 'New entry' : 'Edit entry'"></h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400" x-text="mixKindLabel(mixEdit.row.kind)"></p>
+          </div>
+          <button type="button" class="btn ml-auto !px-2" @click="mixCancel()" aria-label="Close">✕</button>
+        </div>
+
+        <label class="field">
+          <span>Name <span class="font-normal text-slate-500">(optional)</span></span>
+          <input class="input" x-model="mixEdit.row.label" maxlength="80" :placeholder="mixSummary(mixEdit.row)">
+        </label>
+
+        <p class="text-sm text-slate-500 dark:text-slate-400" x-show="!mixSpec(mixEdit.row.kind)">No form is available for this source (<span x-text="mixEdit.row.kind"></span>): edit its parameters as JSON below.</p>
+
+        <template x-for="f in mixFields()" :key="f.key">
+          <div class="space-y-1.5" x-show="f.group !== 'advanced' || mixEdit.more">
+            <p class="text-sm font-medium"><span x-text="f.label"></span><span class="text-red-600" x-show="mixIsRequired(f)"> *</span></p>
+
+            <template x-if="f.widget === 'segmented'">
+              <div class="flex flex-wrap gap-2">
+                <template x-if="f.nullable"><button type="button" class="pill" :class="!mixFilled(mixGet(f.key)) ? 'pill-on' : ''" @click="mixSet(f.key, null)">Default</button></template>
+                <template x-for="o in f.options" :key="o.value"><button type="button" class="pill" :class="mixGet(f.key) === o.value ? 'pill-on' : ''" :title="o.help || ''" @click="mixSet(f.key, o.value)" x-text="o.label"></button></template>
+              </div>
+            </template>
+
+            <template x-if="f.widget === 'text'">
+              <input class="input" :placeholder="f.placeholder || ''" :value="mixGet(f.key) || ''" @input="mixSet(f.key, $event.target.value)">
+            </template>
+
+            <template x-if="f.widget === 'int'">
+              <input type="number" class="input !w-32" :min="f.min" :max="f.max" :placeholder="f.placeholder || ''" :value="mixGet(f.key) === null ? '' : mixGet(f.key)" @input="mixSetInt(f.key, $event.target.value)">
+            </template>
+
+            <template x-if="f.widget === 'bool'">
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" :checked="mixGet(f.key) === true" @change="mixSet(f.key, $event.target.checked ? true : null)"> <span x-text="f.help"></span></label>
+            </template>
+
+            <template x-if="f.widget === 'date'">
+              <input type="date" class="input !w-44" :value="mixDate(f.key)" @input="mixSetDate(f, $event.target.value)">
+            </template>
+
+            <template x-if="f.widget === 'text_list' || f.widget === 'person_list'">
+              <div class="space-y-2">
+                <div class="flex flex-wrap gap-2" x-show="(mixGet(f.key) || []).length">
+                  <template x-for="(t, ti) in (mixGet(f.key) || [])" :key="t">
+                    <span class="pill pill-on inline-flex items-center gap-1"><span x-text="t"></span><button type="button" class="leading-none" @click="mixListRemove(f.key, ti)" :aria-label="'Remove ' + t">✕</button></span>
+                  </template>
+                </div>
+                <template x-if="f.widget === 'person_list' && people.length">
+                  <div class="space-y-2">
+                    <input class="input" type="search" placeholder="Filter names" x-model="peopleFilter" x-show="people.length > 12">
+                    <div class="grid grid-cols-4 sm:grid-cols-6 gap-3 max-h-56 overflow-y-auto p-1">
+                      <template x-for="p in filteredPeople()" :key="p.name">
+                        <button type="button" class="text-center" @click="mixToggle(f.key, p.name)">
+                          <span class="block mx-auto h-14 w-14 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="mixHas(f.key, p.name) ? 'ring-blue-600' : 'ring-transparent'">
+                            <img :src="'./api/immich/thumbnail/' + encodeURIComponent(p.account) + '/person/' + p.id" class="h-full w-full object-cover" loading="lazy" alt="">
+                          </span>
+                          <span class="block mt-1 text-xs truncate" x-text="p.name"></span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <div class="flex gap-2">
+                  <input class="input" :placeholder="f.widget === 'person_list' ? (people.length ? 'Or type a name' : 'Type a name') : (f.placeholder || '')" x-model="mixEdit.chip[f.key]" @keydown.enter.prevent="mixListAdd(f)">
+                  <button type="button" class="btn shrink-0 whitespace-nowrap" @click="mixListAdd(f)">Add</button>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="f.widget === 'account_list'">
+              <div class="flex flex-wrap gap-2">
+                <template x-for="a in accounts.filter(function (x) { return !x.isNew; })" :key="a.name">
+                  <button type="button" class="pill" :class="mixHas(f.key, a.name) ? 'pill-on' : ''" @click="mixToggle(f.key, a.name)" x-text="a.name"></button>
+                </template>
+                <p class="text-xs text-slate-500" x-show="!accounts.length">No Immich account is configured yet.</p>
+              </div>
+            </template>
+
+            <template x-if="f.widget === 'album'">
+              <div class="space-y-2">
+                <div class="flex gap-2">
+                  <input class="input" placeholder="Album name" :value="mixGet(f.key) || ''" @input="mixSet(f.key, $event.target.value)">
+                  <button type="button" class="btn shrink-0 whitespace-nowrap" @click="loadAlbums()" :disabled="!!(busy.albums)" x-show="!albums.length">Load albums</button>
+                </div>
+                <div class="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-56 overflow-y-auto p-1" x-show="albums.length">
+                  <template x-for="al in albums" :key="al.account + al.id">
+                    <button type="button" class="text-left" @click="mixSet(f.key, al.name)">
+                      <div class="aspect-square rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="mixGet(f.key) === al.name ? 'ring-blue-600' : 'ring-transparent'">
+                        <img x-show="al.thumbnail_asset_id" :src="'./api/immich/thumbnail/' + encodeURIComponent(al.account) + '/asset/' + al.thumbnail_asset_id" class="h-full w-full object-cover" loading="lazy" alt="">
+                      </div>
+                      <p class="mt-1 text-xs truncate" x-text="al.name"></p>
+                      <p class="text-[11px] text-slate-500" x-text="al.asset_count + ' · ' + al.account"></p>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="f.widget === 'on_this_day'">
+              <div class="space-y-2">
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" :checked="mixFilled(mixGet(f.key))" @change="mixSet(f.key, $event.target.checked ? {} : null)"> Only photos taken around today's date in previous years</label>
+                <div class="grid grid-cols-3 gap-3" x-show="mixOtd()">
+                  <template x-for="s in otdFields" :key="s.key">
+                    <label class="field"><span class="!text-xs" x-text="s.label"></span>
+                      <input type="number" class="input" :min="s.min" :max="s.max" :placeholder="s.def" :value="mixOtd() && mixOtd()[s.key] !== undefined ? mixOtd()[s.key] : ''" @input="mixSetOtd(f.key, s.key, $event.target.value)">
+                    </label>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <p class="text-xs text-slate-500 dark:text-slate-400" x-show="f.help && f.widget !== 'bool'" x-text="f.help"></p>
+          </div>
+        </template>
+
+        <div class="space-y-1.5">
+          <p class="text-sm font-medium">How often</p>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="l in mixLevels" :key="l.label"><button type="button" class="pill" :class="Number(mixEdit.row.weight) === l.w ? 'pill-on' : ''" @click="mixEdit.row.weight = l.w" x-text="l.label"></button></template>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Compared with your other entries: <b x-text="mixLevel(mixEdit.row.weight)"></b>.</p>
+        </div>
+
+        <div class="space-y-3">
+          <button type="button" class="text-sm text-blue-600 dark:text-blue-400" @click="mixEdit.more = !mixEdit.more" x-text="mixEdit.more ? 'Hide advanced options' : 'Show advanced options' + (mixAdvancedCount() ? ' (' + mixAdvancedCount() + ')' : '')"></button>
+          <div class="space-y-3" x-show="mixEdit.more">
+            <label class="field"><span>Exact weight</span><input type="number" min="0.1" max="1000" step="0.1" class="input !w-28" x-model.number="mixEdit.row.weight"></label>
+            <div>
+              <button type="button" class="btn !text-xs" @click="mixToggleJson()" x-text="mixEdit.jsonOpen ? 'Hide raw JSON' : 'Edit raw JSON'"></button>
+              <div class="mt-2 space-y-2" x-show="mixEdit.jsonOpen">
+                <textarea class="input font-mono text-xs" rows="7" x-model="mixEdit.json" spellcheck="false" aria-label="Rule parameters as JSON"></textarea>
+                <div class="flex items-center gap-2"><button type="button" class="btn !text-xs" @click="mixApplyJson()">Apply JSON</button><span class="text-xs text-slate-500">Keys the form does not know are kept as they are.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <ul class="text-sm text-red-600 dark:text-red-400 list-disc pl-5" x-show="mixEdit.errors.length">
+          <template x-for="m in mixEdit.errors" :key="m"><li x-text="m"></li></template>
+        </ul>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn" @click="mixCancel()">Cancel</button>
+          <button type="button" class="btn-primary" @click="mixDone()" x-text="mixEdit.isNew ? 'Add entry' : 'Done'"></button>
+        </div>
+      </div>
+    </template>
+  </div>
+
   <!-- Zoom modal -->
   <div x-show="zoomed" x-transition.opacity class="fixed inset-0 z-50 bg-black/80 flex flex-col" @keydown.escape.window="zoomed = null" @click.self="zoomed = null">
     <div class="flex items-center gap-3 p-3 text-white text-sm">
@@ -869,6 +1058,8 @@
     .badge-amber { @apply bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300; }
     .chip { @apply rounded-full px-2 py-0.5 text-[10px] ring-1 ring-slate-300 dark:ring-slate-700 text-slate-500; }
     .chip-on { @apply bg-blue-600 text-white ring-blue-600; }
+    .pill { @apply rounded-full px-3 py-1 text-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800; }
+    .pill-on { @apply bg-blue-600 text-white ring-blue-600 hover:bg-blue-600 dark:hover:bg-blue-600; }
     .chip-on-green { @apply bg-emerald-600 text-white ring-emerald-600; }
     .env { @apply ml-1 rounded bg-slate-200 dark:bg-slate-700 px-1 text-[10px] font-normal text-slate-600 dark:text-slate-300; }
   }
@@ -897,6 +1088,10 @@
       card: { title: "", subtitle: "", caption: "", accent: "red", ttl: 60 },
       lab: { file: null, template: "none", fit: "", variants: [{ profile: "auto", dither: "auto" }, { profile: "official", dither: "atkinson" }], results: [], frameSize: null },
       config: null, sources: {}, draft: null, accounts: [], mixRows: [], mixView: null,
+      // Smart Mix editor: the forms are generated from GET api/smart-mix/kinds (providers describe their own rules).
+      mixSpecs: {}, mixAdd: false, mixEdit: null, mixOpen: false,
+      mixLevels: [{ label: "Rarely", w: 0.5 }, { label: "Normal", w: 1 }, { label: "Often", w: 3 }, { label: "Very often", w: 8 }],
+      otdFields: [{ key: "window_days", label: "Days around", min: 0, max: 31, def: "3" }, { key: "years_back", label: "Years back", min: 1, max: 20, def: "10" }, { key: "min_years_ago", label: "Skip recent years", min: 1, max: 20, def: "1" }],
       frameAsked: false, ambient: null, albums: [], people: [], peopleFilter: "", tmdbTest: null, apiKey: { value: "", shown: false, source: "none", regenerable: false },
 
       // --- Lifecycle -------------------------------------------------------------------
@@ -1143,11 +1338,17 @@
         var accounts = view.config.immich.accounts || {};
         this.accounts = Object.keys(accounts).map(function (name) { return { name: name, url: accounts[name].url, api_key: "", test: null, isNew: false }; });
         this.mixRows = (view.config.smart_mix.entries || []).map(function (e) {
-          return { label: e.label || "", kind: e.kind, weight: e.weight, enabled: e.enabled, paramsText: JSON.stringify(e.params || {}, null, 2), error: "" };
+          return { label: e.label || "", kind: e.kind, weight: e.weight, enabled: e.enabled, params: JSON.parse(JSON.stringify(e.params || {})) };
         });
       },
       onSection() {
-        if (this.section === "mix") this.loadMixView();
+        if (this.section === "mix") {
+          this.loadMixView(); this.loadMixKinds();
+          if (this.accounts.length) {
+            if (!this.people.length) this.loadPeople(false);
+            if (!this.albums.length) this.loadAlbums();
+          }
+        }
         if (this.section === "security") this.loadKeyInfo();
         if (this.section === "immich" && this.accounts.length && !this.people.length) this.loadPeople(false);
         if (this.section === "family" && this.accounts.length) {
@@ -1256,10 +1457,30 @@
         finally { this.busy.tmdbTest = false; }
       },
       async loadMixView() { try { this.mixView = await this.api("api/smart-mix"); } catch (e) { this.mixView = null; } },
-      mixKinds() {
-        var kinds = (this.mixView && this.mixView.supported_kinds) || ["immich", "tmdb"];
-        this.mixRows.forEach(function (r) { if (kinds.indexOf(r.kind) === -1) kinds = kinds.concat([r.kind]); });
-        return kinds;
+      async loadMixKinds() {
+        try {
+          var r = await this.api("api/smart-mix/kinds"); var map = {};
+          r.kinds.forEach(function (k) { map[k.kind] = k; });
+          this.mixSpecs = map;
+        } catch (e) { this.mixSpecs = {}; }
+      },
+      mixSpec(kind) { return this.mixSpecs[kind] || null; },
+      mixKindList() { var self = this; return Object.keys(this.mixSpecs).sort().map(function (k) { return self.mixSpecs[k]; }); },
+      mixUnknownKinds() {
+        var self = this;
+        return ((this.mixView && this.mixView.supported_kinds) || []).filter(function (k) { return !self.mixSpecs[k]; });
+      },
+      mixIcon(kind) { var s = this.mixSpec(kind); return s ? s.icon : "🧩"; },
+      mixKindLabel(kind) { var s = this.mixSpec(kind); return s ? s.label : "Custom rule · " + kind; },
+      mixMissingService(row) {
+        var s = this.mixSpec(row.kind);
+        if (!s || !s.service || !this.status || !this.status.services || this.status.services[s.service] !== false) return "";
+        return s.service === "tmdb" ? "TMDB API key not set (Settings > TMDB): this entry is skipped." : "Immich is not configured (Settings > Immich): this entry is skipped.";
+      },
+      mixLevel(weight) {
+        var w = Number(weight);
+        var hit = this.mixLevels.find(function (l) { return l.w === w; });
+        return hit ? hit.label : "Custom (" + w + ")";
       },
       mixChance(i) {
         // Live probability of unsaved weights (enabled entries only).
@@ -1269,16 +1490,157 @@
         if (!total || !row.enabled) return row.enabled ? null : 0;
         return Number(row.weight) / total;
       },
-      async saveMix() {
-        var entries = []; var failed = false;
-        this.mixRows.forEach(function (r) {
-          r.error = "";
-          var params;
-          try { params = JSON.parse(r.paramsText || "{}"); if (typeof params !== "object" || Array.isArray(params) || params === null) throw new Error("must be a JSON object"); }
-          catch (e) { r.error = "Invalid JSON: " + e.message; failed = true; return; }
-          entries.push({ kind: r.kind, params: params, weight: Number(r.weight) || 1, label: r.label.trim() || null, enabled: r.enabled });
+
+      // --- Smart Mix: descriptor evaluation (shared by the forms and the one-line summaries) ---
+      mixFilled(v) {
+        if (v === null || v === undefined || v === "" || v === false) return false;
+        if (Array.isArray(v)) return v.length > 0;
+        return true;
+      },
+      mixValue(spec, params, key) {
+        var v = params[key];
+        if (v === undefined) {
+          var f = spec.fields.find(function (x) { return x.key === key; });
+          v = f && f.default !== undefined ? f.default : null;
+        }
+        return v;
+      },
+      mixHolds(conds, params, spec) {
+        var self = this;
+        return (conds || []).every(function (c) {
+          var v = self.mixValue(spec, params, c.field);
+          if (c.any_of && !c.any_of.some(function (x) { return x === v; })) return false;
+          if (c.filled !== null && c.filled !== undefined && self.mixFilled(v) !== c.filled) return false;
+          return true;
         });
-        if (failed) { this.toast("Fix the entry parameters first", true); return; }
+      },
+      mixSummary(row) {
+        var spec = this.mixSpec(row.kind);
+        if (!spec) return "Custom " + row.kind + " rule";
+        var self = this; var parts = [];
+        spec.summary.forEach(function (p) {
+          if (!self.mixHolds(p.when, row.params, spec)) return;
+          var v = p.field ? self.mixValue(spec, row.params, p.field) : null;
+          if (p.field && !self.mixFilled(v)) return;
+          var text = Array.isArray(v) ? v.join(", ") : (v !== null && typeof v === "object" ? "" : String(v === null ? "" : v));
+          parts.push(p.template.replace("{value}", text));
+        });
+        return parts.length ? parts.join(" · ") : (spec.summary_fallback || spec.label);
+      },
+
+      // --- Smart Mix: add / edit / duplicate ---------------------------------------------------
+      mixNewRow(kind, params, weight) { return { label: "", kind: kind, weight: weight || 1, enabled: true, params: JSON.parse(JSON.stringify(params || {})) }; },
+      startMixEdit(row, index) {
+        var spec = this.mixSpec(row.kind); var self = this; var more = false;
+        if (spec) more = spec.fields.some(function (f) { return f.group === "advanced" && self.mixFilled(row.params[f.key]); });
+        var json = spec ? "" : JSON.stringify(row.params, null, 2);
+        this.mixEdit = { i: index, isNew: index < 0, row: row, more: more, chip: {}, errors: [], jsonOpen: !spec, json: json, jsonBase: json };
+        this.mixAdd = false; this.mixOpen = true;
+      },
+      openMixEdit(i) { this.startMixEdit(JSON.parse(JSON.stringify(this.mixRows[i])), i); },
+      addMixPreset(kind, preset) {
+        var row = this.mixNewRow(kind, preset.params, preset.weight);
+        if (preset.edit_first) { this.startMixEdit(row, -1); return; }
+        this.mixRows.push(row);
+        this.mixAdd = false;
+        this.toast("Entry added: press Save to apply");
+      },
+      addMixBlank(kind) { this.startMixEdit(this.mixNewRow(kind, {}, 1), -1); },
+      duplicateMix(i) {
+        var copy = JSON.parse(JSON.stringify(this.mixRows[i]));
+        if (copy.label) copy.label = (copy.label + " (copy)").slice(0, 80);
+        this.mixRows.splice(i + 1, 0, copy);
+      },
+      // mixEdit stays set after closing (only mixOpen flips) so the hidden form never evaluates against null.
+      mixCancel() { this.mixOpen = false; },
+      mixToggleJson() {
+        var e = this.mixEdit; e.jsonOpen = !e.jsonOpen;
+        if (e.jsonOpen) { e.json = JSON.stringify(e.row.params, null, 2); e.jsonBase = e.json; }
+      },
+      mixApplyJson() {
+        var e = this.mixEdit;
+        try {
+          var p = JSON.parse(e.json || "{}");
+          if (typeof p !== "object" || Array.isArray(p) || p === null) throw new Error("must be a JSON object");
+          e.row.params = p; e.errors = []; e.jsonBase = e.json;
+          return true;
+        } catch (err) { e.errors = ["Invalid JSON: " + err.message]; return false; }
+      },
+      mixDone() {
+        var e = this.mixEdit; var self = this;
+        // The raw JSON wins only when it was edited; otherwise the form is the source of truth.
+        if (e.jsonOpen && e.json !== e.jsonBase && !this.mixApplyJson()) return;
+        var spec = this.mixSpec(e.row.kind); var params = e.row.params; var errors = [];
+        if (spec) {
+          spec.fields.forEach(function (f) {
+            if (!self.mixHolds(f.show_when, params, spec)) { delete params[f.key]; return; }
+            if (typeof params[f.key] === "string") params[f.key] = params[f.key].trim();
+            if (params[f.key] !== undefined && !self.mixFilled(params[f.key])) delete params[f.key];
+            if (self.mixIsRequired(f) && !self.mixFilled(params[f.key])) errors.push(f.label + " is required");
+          });
+        }
+        if (errors.length) { e.errors = errors; return; }
+        e.row.label = (e.row.label || "").trim();
+        e.row.weight = Number(e.row.weight) > 0 ? Number(e.row.weight) : 1;
+        if (e.isNew) this.mixRows.push(e.row); else this.mixRows.splice(e.i, 1, e.row);
+        this.toast("Entry " + (e.isNew ? "added" : "updated") + ": press Save to apply");
+        this.mixOpen = false;
+      },
+
+      // --- Smart Mix: form fields (all operate on the params of the entry being edited) ----------
+      mixFields() {
+        var e = this.mixEdit; var spec = e && this.mixSpec(e.row.kind); var self = this;
+        if (!spec) return [];
+        return spec.fields.filter(function (f) { return self.mixHolds(f.show_when, e.row.params, spec); });
+      },
+      mixAdvancedCount() { return this.mixFields().filter(function (f) { return f.group === "advanced"; }).length; },
+      mixIsRequired(f) {
+        var e = this.mixEdit; var spec = this.mixSpec(e.row.kind);
+        return !!f.required || (f.required_when.length > 0 && this.mixHolds(f.required_when, e.row.params, spec));
+      },
+      mixGet(key) {
+        var e = this.mixEdit; var spec = this.mixSpec(e.row.kind);
+        if (spec) return this.mixValue(spec, e.row.params, key);
+        var v = e.row.params[key]; return v === undefined ? null : v;
+      },
+      mixSet(key, value) {
+        var params = this.mixEdit.row.params;
+        if (value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length)) delete params[key];
+        else params[key] = value;
+      },
+      mixSetInt(key, raw) { this.mixSet(key, raw === "" || isNaN(Number(raw)) ? null : Number(raw)); },
+      mixDate(key) { var v = this.mixGet(key); return v ? String(v).slice(0, 10) : ""; },
+      mixSetDate(f, day) { this.mixSet(f.key, day ? day + "T" + (f.time || "00:00:00") + "Z" : null); },
+      mixList(key) { var v = this.mixEdit.row.params[key]; return Array.isArray(v) ? v : []; },
+      mixHas(key, name) {
+        var n = String(name).toLowerCase();
+        return this.mixList(key).some(function (x) { return String(x).toLowerCase() === n; });
+      },
+      mixToggle(key, name) {
+        var list = this.mixList(key).slice(); var n = String(name).toLowerCase();
+        var i = list.findIndex(function (x) { return String(x).toLowerCase() === n; });
+        if (i === -1) list.push(name); else list.splice(i, 1);
+        this.mixSet(key, list);
+      },
+      mixListAdd(f) {
+        var e = this.mixEdit; var text = (e.chip[f.key] || "").trim();
+        if (!text) return;
+        if (f.max && this.mixList(f.key).length >= f.max && !this.mixHas(f.key, text)) { e.errors = ["At most " + f.max + " values for " + f.label]; return; }
+        e.errors = [];
+        if (!this.mixHas(f.key, text)) this.mixToggle(f.key, text);
+        e.chip[f.key] = "";
+      },
+      mixListRemove(key, i) { var list = this.mixList(key).slice(); list.splice(i, 1); this.mixSet(key, list); },
+      mixOtd() { var v = this.mixEdit.row.params.on_this_day; return v && typeof v === "object" ? v : null; },
+      mixSetOtd(field, key, raw) {
+        var cur = Object.assign({}, this.mixOtd() || {});
+        if (raw === "" || isNaN(Number(raw))) delete cur[key]; else cur[key] = Number(raw);
+        this.mixEdit.row.params[field] = cur;
+      },
+      async saveMix() {
+        var entries = this.mixRows.map(function (r) {
+          return { kind: r.kind, params: r.params, weight: Number(r.weight) || 1, label: (r.label || "").trim() || null, enabled: r.enabled };
+        });
         var patch = this.changes(["smart_mix"], ["entries"]);
         patch.smart_mix = Object.assign(patch.smart_mix || {}, { entries: entries });
         if (await this.putConfig(patch)) this.loadMixView();

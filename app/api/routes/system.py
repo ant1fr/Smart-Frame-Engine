@@ -24,6 +24,7 @@ from app.services.current_image import CurrentImageMeta
 from app.services.delivery import FrameTelemetry, LastDelivery, PendingUpload
 from app.services.ephemeral import EphemeralView
 from app.services.scheduler import SchedulerSnapshot
+from app.version import release_label
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -83,7 +84,12 @@ class ServiceConfigured(BaseModel):
 class StatusResponse(BaseModel):
     """Overall system status."""
 
-    version: str
+    version: str = Field(description="Engine version (PEP 440, same as /api/health)")
+    release: str = Field(
+        description="Version as spelled by the git tag and the Docker image tag (SemVer, e.g. "
+        "1.0.0-rc.2), with +<build> appended for images built outside a release tag; "
+        "informational, for display only"
+    )
     uptime_s: float
     auth_enabled: bool
     auth_mode: str = Field(description="open, key (API key only) or password (admin login)")
@@ -131,6 +137,7 @@ async def status(
     started_at: float = request.app.state.started_at
     return StatusResponse(
         version=__version__,
+        release=release_label(),
         uptime_s=round(time.monotonic() - started_at, 1),
         auth_enabled=auth.mode != "open",
         auth_mode=auth.mode,

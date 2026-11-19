@@ -24,6 +24,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # The tag (v1.0.0-rc.2) and pyproject.toml (1.0.0rc2) spell the same release differently;
+      # compare them as versions so a forgotten bump can't ship an image showing another version.
+      - name: Check the tag matches pyproject.toml
+        run: |
+          python3 - <<'PY'
+          import os, re, tomllib
+
+          def normalize(version: str) -> str:
+              """Reduce SemVer (1.0.0-rc.2) and PEP 440 (1.0.0rc2) to one spelling."""
+              version = version.lstrip("v").split("+")[0]
+              version = re.sub(r"[-.]?(alpha|a)[-.]?(\d+)", r"a\2", version)
+              version = re.sub(r"[-.]?(beta|b)[-.]?(\d+)", r"b\2", version)
+              return re.sub(r"[-.]?rc[-.]?(\d+)", r"rc\1", version)
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          declared = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          if normalize(tag) != normalize(declared):
+              raise SystemExit(f"Tag {tag} does not match pyproject.toml version {declared}")
+          print(f"Tag {tag} matches pyproject.toml version {declared}")
+          PY
+
       - name: Compute image name (registry paths must be lowercase)
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 

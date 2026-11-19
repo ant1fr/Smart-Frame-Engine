@@ -28,6 +28,7 @@ from app.core.config_models import FitMode, SourceKind, SourceRule
 from app.providers.immich.models import ImmichDisplayRequest, MatchMode, OnThisDay
 from app.providers.tmdb.models import TmdbDisplayRequest
 from app.services.display import DisplayResult
+from app.services.rule_catalog import Placeholder, RuleKindSpec, default_catalog, placeholders
 from app.services.scheduler import ContextView, validation_summary
 from app.services.smart_mix import DEFAULT_CONTEXT_WEIGHT, MixContext
 
@@ -243,6 +244,31 @@ async def clear_context(scheduler: SchedulerDep) -> ClearedResponse:
     had = scheduler.live_context() is not None
     await scheduler.set_context(None)
     return ClearedResponse(cleared=had)
+
+
+# --- Rule editor catalog ---------------------------------------------------------------
+class RuleKindsResponse(BaseModel):
+    """What each source kind accepts, for building a rule editor."""
+
+    kinds: list[RuleKindSpec] = Field(
+        description="Descriptor of every runnable source kind that has one; a kind listed in "
+        "supported_kinds of GET /api/smart-mix but missing here can only be edited as raw params"
+    )
+    placeholders: list[Placeholder] = Field(
+        description="{name} placeholders a rule's text may contain, expanded on every run"
+    )
+
+
+@router.get(
+    "/kinds",
+    response_model=RuleKindsResponse,
+    summary="Describe the rules each source kind accepts",
+)
+async def get_rule_kinds(scheduler: SchedulerDep) -> RuleKindsResponse:
+    """Fields, choices, presets and summary recipe of each source kind (providers own them)."""
+    runnable = set(scheduler.supported_kinds)
+    kinds = [spec for spec in default_catalog().all() if spec.kind in runnable]
+    return RuleKindsResponse(kinds=kinds, placeholders=placeholders())
 
 
 # --- Inspection ------------------------------------------------------------------------

@@ -77,6 +77,8 @@ Want it to refresh by itself? Turn on the scheduler in *Settings → Frame & sch
 
 - **Smart Mix**: a weighted playlist ("60% family, 25% travel, 15% movie posters") for
   scheduled refreshes, plus **Random Discovery** that occasionally digs up a forgotten photo.
+  Entries are built from friendly presets and forms (people, albums, themes, posters...): no
+  JSON to write.
 - **Ambient context**: Home Assistant can say who is home, the weather or the season; the engine
   leans the playlist that way for a while, then forgets on its own.
 - **Battery frames**: in deep-sleep mode, new pictures wait in a queue and are delivered the
