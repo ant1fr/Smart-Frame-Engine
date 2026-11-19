@@ -220,6 +220,13 @@ changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
 
 ## Contract Changelog
 
+### 1.2 (unreleased), additive
+
+- `GET /api/status` gains `release`: the engine version spelled like the git tag and the Docker
+  image tag (SemVer, `1.0.0-rc.2`), with `+<build>` appended for images built outside a release
+  tag. It is for display only; `version` (PEP 440) on `/api/status` and `/api/health` is
+  unchanged. No `api_version` change.
+
 ### 1.1 (engine 1.0.0rc2), additive
 
 - `GET /api/health` gains `instance_id` and `instance_name`; Zeroconf TXT gains `instance_id` and

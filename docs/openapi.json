@@ -3484,6 +3484,11 @@
             "title": "Public Image Endpoints",
             "type": "boolean"
           },
+          "release": {
+            "description": "Version as spelled by the git tag and the Docker image tag (SemVer, e.g. 1.0.0-rc.2), with +<build> appended for images built outside a release tag; informational, for display only",
+            "title": "Release",
+            "type": "string"
+          },
           "scheduler": {
             "$ref": "#/components/schemas/SchedulerSnapshot",
             "description": "Autonomous refresh: timer and last run"
@@ -3496,12 +3501,14 @@
             "type": "number"
           },
           "version": {
+            "description": "Engine version (PEP 440, same as /api/health)",
             "title": "Version",
             "type": "string"
           }
         },
         "required": [
           "version",
+          "release",
           "uptime_s",
           "auth_enabled",
           "auth_mode",

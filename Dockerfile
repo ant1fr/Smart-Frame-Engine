@@ -38,6 +38,11 @@ RUN pip install --no-deps .
 ENV NUMBA_CACHE_DIR=/app/.numba_cache
 RUN mkdir -p /app/.numba_cache && chown app:app /app/.numba_cache
 
+# Marks images built outside a release tag (``+<build>`` after the version in the UI); empty for
+# release images. Declared late so changing it never invalidates the layers above.
+ARG APP_BUILD=""
+ENV APP_BUILD=${APP_BUILD}
+
 USER app
 RUN python -c "from app.processor.dither import warm_up; warm_up()"
 VOLUME ["/data"]

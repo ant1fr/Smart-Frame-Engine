@@ -57,6 +57,7 @@ from app.services.display import DisplayService
 from app.services.ephemeral import EphemeralService
 from app.services.now_playing import NowPlayingService
 from app.services.scheduler import SchedulerService, immich_runner, tmdb_runner
+from app.version import release_label
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +218,7 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         logger.info(
             "Smart Frame Engine %s started (instance=%s, data_dir=%s, auth=%s, root_path=%r, "
             "panel=%s, power_mode=%s, pending=%s, scheduler=%s)",
-            __version__,
+            release_label(),
             identity.instance_id,
             settings.data_dir,
             auth_state.mode,
