@@ -357,7 +357,13 @@ async def test_zeroconf_advertises_the_service() -> None:
     assert await advertiser.start() is True and advertiser.active
     info = fake.registered[0]
     assert info.type == SERVICE_TYPE and info.port == 8080
-    assert info.decoded_properties == {"version": "1.2.3", "path": "/fraimic", "auth": "password"}
+    assert info.decoded_properties == {
+        "version": "1.2.3",
+        "api_version": "1",
+        "min_api_version": "1",
+        "path": "/fraimic",
+        "auth": "password",
+    }
     assert info.parsed_addresses() == ["192.0.2.10"]
     await advertiser.stop()
     assert fake.closed and not fake.registered and not advertiser.active

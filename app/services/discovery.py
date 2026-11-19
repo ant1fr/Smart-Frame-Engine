@@ -1,7 +1,10 @@
 """mDNS / Zeroconf: advertise ``_smartframe._tcp.local.`` so other devices can find the engine.
 
-The record carries TXT properties ``version``, ``path`` (``ROOT_PATH``) and ``auth``
-(``none``, ``key`` or ``password``). Advertising is best effort: any failure (no multicast
+The record carries TXT properties ``version``, ``api_version``, ``min_api_version`` (the
+compatibility handshake of ``docs/API_CONTRACT.md``), ``path`` (``ROOT_PATH``) and ``auth``
+(``open``, ``key`` or ``password``). The capability list is not mirrored (a TXT string is
+capped at 255 bytes): clients read it from ``GET /api/health`` after discovery.
+Advertising is best effort: any failure (no multicast
 in a bridged container, no network...) is logged and ignored, the engine runs regardless.
 In Docker, mDNS needs ``network_mode: host``.
 """
@@ -16,6 +19,8 @@ from typing import Any, Final
 
 from zeroconf import IPVersion, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
+
+from app.core.contract import API_VERSION, MIN_API_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,8 @@ class ZeroconfAdvertiser:
         version: str,
         root_path: str,
         auth: str,
+        api_version: int = API_VERSION,
+        min_api_version: int = MIN_API_VERSION,
         instance: str = "Smart Frame Engine",
         zeroconf_factory: Callable[[], Any] = lambda: AsyncZeroconf(ip_version=IPVersion.V4Only),
         addresses: Callable[[], list[str]] = local_addresses,
@@ -57,7 +64,13 @@ class ZeroconfAdvertiser:
             SERVICE_TYPE,
             f"{label}.{SERVICE_TYPE}",
             port=port,
-            properties={"version": version, "path": root_path or "/", "auth": auth},
+            properties={
+                "version": version,
+                "api_version": str(api_version),
+                "min_api_version": str(min_api_version),
+                "path": root_path or "/",
+                "auth": auth,
+            },
             server=f"{host}.local.",
             parsed_addresses=addresses(),
         )

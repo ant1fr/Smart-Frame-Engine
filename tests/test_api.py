@@ -13,7 +13,9 @@ from tests.conftest import ClientFactory
 def test_health(make_client: ClientFactory) -> None:
     response = make_client().get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": __version__}
+    body = response.json()
+    assert body["status"] == "ok" and body["version"] == __version__
+    assert body["api_version"] == 1  # full handshake: tests/test_api_contract.py
 
 
 def test_status_summarizes_without_secrets(

@@ -18,6 +18,7 @@ from app.api.deps import (
     SchedulerDep,
     SettingsDep,
 )
+from app.core.contract import API_VERSION, MIN_API_VERSION, capability_names
 from app.services.current_image import CurrentImageMeta
 from app.services.delivery import FrameTelemetry, LastDelivery, PendingUpload
 from app.services.ephemeral import EphemeralView
@@ -27,10 +28,23 @@ router = APIRouter(prefix="/api", tags=["system"])
 
 
 class HealthResponse(BaseModel):
-    """Liveness probe payload."""
+    """Liveness probe and compatibility handshake (public: no credentials needed)."""
 
     status: Literal["ok"] = "ok"
-    version: str
+    version: str = Field(description="Engine version (PEP 440, e.g. 1.0.0rc1)")
+    api_version: int = Field(
+        description="Contract version this engine speaks (breaking changes only)"
+    )
+    min_api_version: int = Field(
+        description="Oldest contract version still served; a client implementing contract N "
+        "is compatible when min_api_version <= N <= api_version"
+    )
+    auth: Literal["open", "key", "password"] = Field(
+        description="Credentials the other endpoints need (same values as the Zeroconf record)"
+    )
+    capabilities: list[str] = Field(
+        description="Sorted feature flags of this engine; only ever added within a contract version"
+    )
 
 
 class FrameStatus(BaseModel):
@@ -81,9 +95,15 @@ class StatusResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse, summary="Liveness probe")
-async def health() -> HealthResponse:
-    """Return ``ok`` while the process is serving requests."""
-    return HealthResponse(version=__version__)
+async def health(auth: AuthStateDep) -> HealthResponse:
+    """Liveness plus the compatibility handshake, readable before any credential is set up."""
+    return HealthResponse(
+        version=__version__,
+        api_version=API_VERSION,
+        min_api_version=MIN_API_VERSION,
+        auth=auth.mode,
+        capabilities=capability_names(),
+    )
 
 
 @router.get("/status", response_model=StatusResponse, summary="System status")
