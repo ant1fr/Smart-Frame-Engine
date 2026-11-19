@@ -39,6 +39,7 @@ from app.core.auth import AuthMiddleware, AuthState
 from app.core.config_models import RuntimeConfig
 from app.core.config_store import ConfigStore
 from app.core.history_store import HistoryStore
+from app.core.identity import load_identity
 from app.core.limits import MULTIPART_OVERHEAD_BYTES, BodySizeLimitMiddleware
 from app.core.logging_config import masking_filter, setup_logging
 from app.core.proxy import RootPathMiddleware
@@ -110,6 +111,8 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
         activity.attach()
         _prepare_data_dir(settings)
         auth_state.load()
+        identity = load_identity(settings.instance_path, settings.instance_name)
+        app.state.identity = identity
 
         config_store = ConfigStore(settings.config_path, settings.runtime_seed())
         config_store.load()
@@ -206,13 +209,16 @@ def create_app(settings: EnvSettings | None = None) -> FastAPI:
                 version=__version__,
                 root_path=settings.root_path,
                 auth=auth_state.mode,
+                instance=identity.instance_name,
+                instance_id=identity.instance_id,
             )
             await advertiser.start()
         config = config_store.config
         logger.info(
-            "Smart Frame Engine %s started (data_dir=%s, auth=%s, root_path=%r, panel=%s, "
-            "power_mode=%s, pending=%s, scheduler=%s)",
+            "Smart Frame Engine %s started (instance=%s, data_dir=%s, auth=%s, root_path=%r, "
+            "panel=%s, power_mode=%s, pending=%s, scheduler=%s)",
             __version__,
+            identity.instance_id,
             settings.data_dir,
             auth_state.mode,
             settings.root_path,

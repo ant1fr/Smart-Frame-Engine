@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from importlib.metadata import version as distribution_version
 
 import pytest
@@ -13,11 +14,14 @@ from tests.conftest import ClientFactory
 
 def test_health_is_the_compatibility_handshake(make_client: ClientFactory) -> None:
     body = make_client().get("/api/health").json()
+    assert uuid.UUID(body["instance_id"])
     assert body == {
         "status": "ok",
         "version": __version__,
         "api_version": API_VERSION,
         "min_api_version": MIN_API_VERSION,
+        "instance_id": body["instance_id"],
+        "instance_name": body["instance_name"],
         "auth": "open",
         "capabilities": capability_names(),
     }
@@ -66,6 +70,13 @@ def test_health_is_listed_in_the_openapi_schema_with_the_handshake_fields(
 ) -> None:
     schema = make_client().get("/openapi.json").json()
     properties = schema["components"]["schemas"]["HealthResponse"]["properties"]
-    assert {"status", "version", "api_version", "min_api_version", "auth", "capabilities"} <= set(
-        properties
-    )
+    assert {
+        "status",
+        "version",
+        "api_version",
+        "min_api_version",
+        "instance_id",
+        "instance_name",
+        "auth",
+        "capabilities",
+    } <= set(properties)
