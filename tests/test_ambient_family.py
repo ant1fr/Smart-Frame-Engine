@@ -332,7 +332,7 @@ class FakeZeroconf:
         self.registered: list[Any] = []
         self.closed = False
 
-    async def async_register_service(self, info: Any) -> None:
+    async def async_register_service(self, info: Any, **kwargs: Any) -> None:
         if self.fail:
             raise OSError("multicast unavailable")
         self.registered.append(info)

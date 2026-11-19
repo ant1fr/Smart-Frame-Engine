@@ -1,4 +1,4 @@
-# Smart Frame Engine API Contract (v1.0)
+# Smart Frame Engine API Contract (v1.1)
 
 This is the contract between the engine and **external clients**: the Home Assistant
 integration, Node-RED flows, shell scripts, phone shortcuts. It says what a client can rely on
@@ -17,9 +17,11 @@ every authentication mode), so it works before any key or password is configured
 ```json
 {
   "status": "ok",
-  "version": "1.0.0rc1",
+  "version": "1.0.0rc2",
   "api_version": 1,
   "min_api_version": 1,
+  "instance_id": "3f2b8c1e-5d0a-4c7e-9b61-0a1d2e3f4a5b",
+  "instance_name": "Smart Frame Engine 3f2b8c",
   "auth": "key",
   "capabilities": ["activity_log", "ambient_context", "display_immich", "..."]
 }
@@ -31,6 +33,8 @@ every authentication mode), so it works before any key or password is configured
 | `version` | Engine release, [PEP 440](https://peps.python.org/pep-0440/) (`1.0.0`, `1.0.0rc1`). Informational: never gate behaviour on it, use `api_version` and `capabilities`. |
 | `api_version` | Integer contract version the engine speaks. Incremented **only on a breaking change**. It is `1` for every v1.x release. |
 | `min_api_version` | Oldest contract version this engine still serves (see the policy below). |
+| `instance_id` | Stable random UUID of this engine, generated once and stored in the data volume (`instance.json`). **Use it as your unique key** for this engine: it survives restarts, upgrades and address changes. It is not derived from the hardware and is not a secret. A wiped data volume creates a new id. |
+| `instance_name` | Human-readable name, also the mDNS service name. Defaults to `Smart Frame Engine <first 6 characters of the id>`; the operator can set `INSTANCE_NAME`. Not guaranteed unique when set by hand: key on `instance_id`. |
 | `auth` | `open`, `key` or `password`: which credentials the other endpoints need (section 3). |
 | `capabilities` | Sorted list of feature flags (section 2). |
 
@@ -119,9 +123,12 @@ it needs `network_mode: host`). TXT properties, all strings:
 | `version` | Same as `/api/health`. |
 | `api_version` | Same as `/api/health`, as a decimal string. |
 | `min_api_version` | Same as `/api/health`, as a decimal string. |
+| `instance_id` | Same as `/api/health`: match a discovered service to a saved engine with it. |
 | `path` | `ROOT_PATH` (`/` when served at the root). |
 | `auth` | `open`, `key` or `password`. |
 
+The service **name** is the engine's `instance_name`, so several engines on one network coexist
+(if a name is still taken, the responder renames the service rather than failing).
 A client can reject an incompatible engine from the record alone. The capability list is **not**
 in the record (a TXT string is limited to 255 bytes): read it from `GET /api/health` once you
 have the address and port.
@@ -212,6 +219,12 @@ capability list, `API_VERSION` or the Zeroconf record must update this file (inc
 changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
 
 ## Contract Changelog
+
+### 1.1 (engine 1.0.0rc2), additive
+
+- `GET /api/health` gains `instance_id` and `instance_name`; Zeroconf TXT gains `instance_id` and
+  the service name becomes the unique `instance_name`, so two engines on one LAN no longer
+  clash. Clients should use `instance_id` as the stable key of an engine. No `api_version` change.
 
 ### 1.0 (engine 1.0.0rc1)
 

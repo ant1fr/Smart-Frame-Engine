@@ -15,6 +15,7 @@ from app.api.deps import (
     CurrentImageStoreDep,
     DeliveryServiceDep,
     EphemeralServiceDep,
+    IdentityDep,
     SchedulerDep,
     SettingsDep,
 )
@@ -39,6 +40,11 @@ class HealthResponse(BaseModel):
         description="Oldest contract version still served; a client implementing contract N "
         "is compatible when min_api_version <= N <= api_version"
     )
+    instance_id: str = Field(
+        description="Stable random UUID of this engine, generated once and kept in the data "
+        "volume; use it as the client-side unique key"
+    )
+    instance_name: str = Field(description="Human-readable name (also the mDNS service name)")
     auth: Literal["open", "key", "password"] = Field(
         description="Credentials the other endpoints need (same values as the Zeroconf record)"
     )
@@ -95,12 +101,14 @@ class StatusResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse, summary="Liveness probe")
-async def health(auth: AuthStateDep) -> HealthResponse:
+async def health(auth: AuthStateDep, identity: IdentityDep) -> HealthResponse:
     """Liveness plus the compatibility handshake, readable before any credential is set up."""
     return HealthResponse(
         version=__version__,
         api_version=API_VERSION,
         min_api_version=MIN_API_VERSION,
+        instance_id=identity.instance_id,
+        instance_name=identity.instance_name,
         auth=auth.mode,
         capabilities=capability_names(),
     )

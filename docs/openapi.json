@@ -1663,6 +1663,16 @@
             "title": "Capabilities",
             "type": "array"
           },
+          "instance_id": {
+            "description": "Stable random UUID of this engine, generated once and kept in the data volume; use it as the client-side unique key",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "instance_name": {
+            "description": "Human-readable name (also the mDNS service name)",
+            "title": "Instance Name",
+            "type": "string"
+          },
           "min_api_version": {
             "description": "Oldest contract version still served; a client implementing contract N is compatible when min_api_version <= N <= api_version",
             "title": "Min Api Version",
@@ -1684,6 +1694,8 @@
           "version",
           "api_version",
           "min_api_version",
+          "instance_id",
+          "instance_name",
           "auth",
           "capabilities"
         ],
@@ -4051,7 +4063,7 @@
   "info": {
     "description": "\nFetch images from modular sources (Immich, TMDB posters, URLs), optimize them for a\ncolor eInk panel and push them to a Fraimic frame.\n\n**Authentication:** with `ADMIN_PASSWORD` set, every route except `/api/health`, the login\nand the public images needs a web UI session or the API key. With only `APP_API_KEY`, every\n`POST`/`PUT`/`DELETE` route and `/api/config` need the key. Send it as `X-API-Key`,\n`Authorization: Bearer <key>` or `?api_key=`; use **Authorize** above.\n",
     "title": "Smart Frame Engine",
-    "version": "1.0.0rc1"
+    "version": "1.0.0rc2"
   },
   "openapi": "3.1.0",
   "paths": {
