@@ -65,12 +65,14 @@ Clean, responsive (mobile/desktop) English web interface allowing users to:
 - `POST /api/refresh`: Re-run the currently active source rule.
 - `GET /api/current.jpg` & `GET /api/current.bin`: Serve generated files (compatible with Home Assistant *Generic Camera*).
 - `GET /api/config` & `PUT /api/config`: Read and update runtime configuration.
+- `GET /api/health`: Public liveness probe and compatibility handshake (`version`, `api_version`, `min_api_version`, `auth`, `capabilities`); never requires credentials. See `docs/API_CONTRACT.md`.
 - `GET /api/status`: Overall system status, queue state, and active image metadata.
 
 ## Development Constraints
 - All code, comments, docstrings, UI text, commit messages, and documentation must be written in **English**.
 - Produce clean, strictly typed (`typing`), modular, well-documented code.
 - Always provide complete file implementations (never use `# TODO` or `...` placeholders).
+- **API contract:** any PR that changes an `/api/*` endpoint, an exposed Pydantic model, the `capabilities` list (`app/core/contract.py`), `API_VERSION`/`MIN_API_VERSION` or the Zeroconf TXT records must update `docs/API_CONTRACT.md` (including its `## Contract Changelog`) and regenerate `docs/openapi.json` with `python scripts/export_openapi.py`. `tests/test_openapi_contract.py` fails on drift. Capability flags are only ever added within a contract version; breaking changes bump `api_version` (policy in the contract).
 - Include a ready-to-use Home Assistant integration guide (`Generic Camera` + YAML automation examples for presence detection and TV media playback).
 
 ## Git & Gitflow Workflow

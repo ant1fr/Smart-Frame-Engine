@@ -1,0 +1,6026 @@
+{
+  "components": {
+    "schemas": {
+      "AccountPeopleView": {
+        "description": "People of one account as the provider sees them.",
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "aliases": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Configured canonical names resolved to person IDs in this account",
+            "title": "Aliases",
+            "type": "object"
+          },
+          "ambiguous": {
+            "description": "Names shared by several people; pin one in immich.person_aliases",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ambiguous",
+            "type": "array"
+          },
+          "cached_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the list was fetched",
+            "title": "Cached At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/PersonView"
+            },
+            "title": "People",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account"
+        ],
+        "title": "AccountPeopleView",
+        "type": "object"
+      },
+      "ActiveRuleView": {
+        "description": "Which rule a refresh would replay.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "description": "pinned = scheduler.source_rule; smart_mix = the weighted playlist; last = the last manual display request",
+            "enum": [
+              "pinned",
+              "smart_mix",
+              "last"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source"
+        ],
+        "title": "ActiveRuleView",
+        "type": "object"
+      },
+      "ActivitySnapshot": {
+        "description": "Body of ``GET /api/activity`` (newest first).",
+        "properties": {
+          "logs": {
+            "description": "Last log lines, newest first",
+            "items": {
+              "$ref": "#/components/schemas/LogLine"
+            },
+            "title": "Logs",
+            "type": "array"
+          },
+          "renders": {
+            "description": "Last displayed images, newest first",
+            "items": {
+              "$ref": "#/components/schemas/RenderEvent"
+            },
+            "title": "Renders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "renders",
+          "logs"
+        ],
+        "title": "ActivitySnapshot",
+        "type": "object"
+      },
+      "AlbumInfo": {
+        "description": "An album of one account (``GET /api/immich/albums``).",
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "thumbnail_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Asset Id"
+          }
+        },
+        "required": [
+          "account",
+          "id",
+          "name",
+          "asset_count",
+          "shared"
+        ],
+        "title": "AlbumInfo",
+        "type": "object"
+      },
+      "AlbumsResponse": {
+        "description": "Albums across the configured accounts.",
+        "properties": {
+          "albums": {
+            "items": {
+              "$ref": "#/components/schemas/AlbumInfo"
+            },
+            "title": "Albums",
+            "type": "array"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Accounts that could not be queried, with the reason",
+            "title": "Errors",
+            "type": "object"
+          }
+        },
+        "required": [
+          "albums"
+        ],
+        "title": "AlbumsResponse",
+        "type": "object"
+      },
+      "AmbientRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /api/context``; unset fields keep their value, empty ones clear it.\n\nEach field is either the bare value or an object with its own ``ttl_minutes``;\n``ttl_minutes`` at the top level is the default for fields without one.",
+        "properties": {
+          "boost_people": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ListInput"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "People (Immich names) to favour",
+            "title": "Boost People"
+          },
+          "boost_tags": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ListInput"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CLIP search phrases to favour (e.g. beach, birthday)",
+            "title": "Boost Tags"
+          },
+          "family_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlagInput"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Temporarily forces Family Mode on or off",
+            "title": "Family Mode"
+          },
+          "presence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ListInput"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "People at home (Immich names): their photos are boosted",
+            "title": "Presence"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextInput"
+              },
+              {
+                "enum": [
+                  "spring",
+                  "summer",
+                  "autumn",
+                  "winter"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replaces the calendar season in {season} placeholders",
+            "title": "Season"
+          },
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default lifetime of the fields below",
+            "title": "Ttl Minutes"
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextInput"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keyword of ambient.weather_queries, e.g. rainy",
+            "title": "Weather"
+          }
+        },
+        "title": "AmbientRequest",
+        "type": "object"
+      },
+      "AmbientState": {
+        "description": "The live ambient fields (``None`` = not set).",
+        "properties": {
+          "boost_people": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedList"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "boost_tags": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedList"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "family_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedFlag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedList"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "season": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimedText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "AmbientState",
+        "type": "object"
+      },
+      "AmbientView": {
+        "description": "The live ambient context and what it currently does.",
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AmbientState"
+          },
+          "extra_candidates": {
+            "description": "Labels of the candidates added to the mix",
+            "items": {
+              "type": "string"
+            },
+            "title": "Extra Candidates",
+            "type": "array"
+          },
+          "family_active": {
+            "description": "Whether Family Mode applies right now",
+            "title": "Family Active",
+            "type": "boolean"
+          },
+          "smart_mix_enabled": {
+            "description": "Presence, boosts and weather only act while the Smart Mix is enabled",
+            "title": "Smart Mix Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "context",
+          "family_active",
+          "smart_mix_enabled",
+          "extra_candidates"
+        ],
+        "title": "AmbientView",
+        "type": "object"
+      },
+      "ApiKeyView": {
+        "description": "The API key for Home Assistant and other clients.",
+        "properties": {
+          "api_key": {
+            "title": "Api Key",
+            "type": "string"
+          },
+          "regenerable": {
+            "description": "False when APP_API_KEY manages the key",
+            "title": "Regenerable",
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "env",
+              "generated",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key",
+          "source",
+          "regenerable"
+        ],
+        "title": "ApiKeyView",
+        "type": "object"
+      },
+      "Body_display_upload_api_display_upload_post": {
+        "properties": {
+          "ephemeral": {
+            "default": false,
+            "description": "Temporary push: the previous image comes back after DELETE /api/queue/ephemeral (uploads are never replayed)",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "Image file (max MAX_UPLOAD_MB)",
+            "title": "File",
+            "type": "string"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "smart_crop",
+                  "contain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the default fit mode",
+            "title": "Fit"
+          },
+          "hold_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keep it up at least this long before a scheduled refresh",
+            "title": "Hold Minutes"
+          },
+          "push_to_fraimic": {
+            "default": true,
+            "description": "Send the result to the frame (or queue it in deepsleep mode); false only renders a preview (/api/preview.jpg)",
+            "title": "Push To Fraimic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_display_upload_api_display_upload_post",
+        "type": "object"
+      },
+      "Body_render_playground_api_playground_render_post": {
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Album name / card caption",
+            "title": "Caption"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Image (not needed for the title card)",
+            "title": "File"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "smart_crop",
+                  "contain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fit mode without a template",
+            "title": "Fit"
+          },
+          "style": {
+            "default": "sleeve",
+            "description": "Album template style",
+            "enum": [
+              "sleeve",
+              "vinyl"
+            ],
+            "title": "Style",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Album artist / card subtitle",
+            "title": "Subtitle"
+          },
+          "template": {
+            "default": "none",
+            "description": "none = a photo with the fit mode; or a composition template",
+            "enum": [
+              "none",
+              "poster",
+              "album",
+              "title_card"
+            ],
+            "title": "Template",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "variants": {
+            "default": "[{\"profile\": \"auto\", \"dither\": \"auto\"}]",
+            "description": "JSON list of up to 4 {profile, dither} objects",
+            "title": "Variants",
+            "type": "string"
+          }
+        },
+        "title": "Body_render_playground_api_playground_render_post",
+        "type": "object"
+      },
+      "CancelOutcome": {
+        "description": "Result of ``DELETE /api/queue/ephemeral``.",
+        "properties": {
+          "cancelled": {
+            "description": "An ephemeral image was queued or shown",
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dropped_pending": {
+            "description": "A queued ephemeral upload was discarded",
+            "title": "Dropped Pending",
+            "type": "boolean"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentImageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The current image now"
+          },
+          "pushed_base": {
+            "description": "The previous image was re-sent (or queued)",
+            "title": "Pushed Base",
+            "type": "boolean"
+          },
+          "refreshing": {
+            "description": "No previous image existed: a background refresh was started instead",
+            "title": "Refreshing",
+            "type": "boolean"
+          },
+          "reverted": {
+            "description": "The previous image is the current image again",
+            "title": "Reverted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cancelled",
+          "dropped_pending",
+          "reverted",
+          "pushed_base",
+          "refreshing"
+        ],
+        "title": "CancelOutcome",
+        "type": "object"
+      },
+      "ClearedResponse": {
+        "properties": {
+          "cleared": {
+            "description": "Whether a boost was active",
+            "title": "Cleared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cleared"
+        ],
+        "title": "ClearedResponse",
+        "type": "object"
+      },
+      "ConfigErrorResponse": {
+        "description": "Validation error payload (never echoes submitted values).",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ConfigErrorResponse",
+        "type": "object"
+      },
+      "ConfigView": {
+        "description": "Effective configuration with masked secrets and value provenance.",
+        "properties": {
+          "config": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "description": "Effective configuration; secrets are masked",
+            "title": "Config",
+            "type": "object"
+          },
+          "frame_size": {
+            "description": "Composition size (width, height)",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Frame Size",
+            "type": "array"
+          },
+          "sources": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Origin of each value: 'default', 'env' (.env) or 'config' (saved)",
+            "title": "Sources",
+            "type": "object"
+          }
+        },
+        "required": [
+          "config",
+          "sources",
+          "frame_size"
+        ],
+        "title": "ConfigView",
+        "type": "object"
+      },
+      "ConnectionTestRequest": {
+        "description": "Test a configured account, or unsaved settings typed in the UI.",
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A configured account name",
+            "title": "Account"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unsaved API key (a masked value means the stored one)",
+            "title": "Api Key"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unsaved Immich URL",
+            "title": "Url"
+          }
+        },
+        "title": "ConnectionTestRequest",
+        "type": "object"
+      },
+      "ConnectionTestResult": {
+        "description": "Outcome of an Immich connection test.",
+        "properties": {
+          "albums": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Albums"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "people": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "People"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ConnectionTestResult",
+        "type": "object"
+      },
+      "ContextRequest": {
+        "additionalProperties": false,
+        "description": "A temporary boost of the Smart Mix, e.g. \"it is raining: favour cosy photos\".",
+        "properties": {
+          "exclusive": {
+            "default": false,
+            "description": "Only the boost is used until it expires (an override)",
+            "title": "Exclusive",
+            "type": "boolean"
+          },
+          "kind": {
+            "default": "immich",
+            "description": "Source of the boosted rule",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "on_this_day": {
+            "default": false,
+            "description": "Immich shorthand: memories",
+            "title": "On This Day",
+            "type": "boolean"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Raw rule parameters (the display endpoint body)",
+            "title": "Params",
+            "type": "object"
+          },
+          "persons": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Immich shorthand: names",
+            "title": "Persons"
+          },
+          "queries": {
+            "description": "Immich shorthand: search phrases",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Queries",
+            "type": "array"
+          },
+          "ttl_minutes": {
+            "default": 60,
+            "description": "Boost lifetime",
+            "maximum": 10080.0,
+            "minimum": 1.0,
+            "title": "Ttl Minutes",
+            "type": "integer"
+          },
+          "weight": {
+            "default": 3.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "title": "ContextRequest",
+        "type": "object"
+      },
+      "ContextResponse": {
+        "description": "The boost that was set.",
+        "properties": {
+          "effective": {
+            "description": "false while a pinned scheduler.source_rule takes precedence over the mix",
+            "title": "Effective",
+            "type": "boolean"
+          },
+          "exclusive": {
+            "title": "Exclusive",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/SourceRule"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "kind",
+          "weight",
+          "exclusive",
+          "expires_at",
+          "rule",
+          "effective"
+        ],
+        "title": "ContextResponse",
+        "type": "object"
+      },
+      "ContextView": {
+        "description": "The temporary Smart Mix boost, as exposed by the API.",
+        "properties": {
+          "exclusive": {
+            "title": "Exclusive",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "kind",
+          "weight",
+          "exclusive",
+          "expires_at"
+        ],
+        "title": "ContextView",
+        "type": "object"
+      },
+      "CurrentImageMeta": {
+        "description": "Metadata of a rendered image (served by ``GET /api/status``).",
+        "properties": {
+          "bin_size": {
+            "title": "Bin Size",
+            "type": "integer"
+          },
+          "content_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identity of the displayed content (deduplication)",
+            "title": "Content Key"
+          },
+          "details": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Provider metadata (date, location, people...)",
+            "title": "Details",
+            "type": "object"
+          },
+          "dither": {
+            "enum": [
+              "auto",
+              "atkinson",
+              "atkinson-classic",
+              "fs",
+              "floyd_steinberg",
+              "fs-serpentine",
+              "stucki",
+              "blue-noise"
+            ],
+            "title": "Dither",
+            "type": "string"
+          },
+          "ephemeral": {
+            "default": false,
+            "description": "Temporary image: the previous one comes back afterwards",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When an ephemeral image is replaced by the previous one",
+            "title": "Expires At"
+          },
+          "fit": {
+            "enum": [
+              "smart_crop",
+              "contain"
+            ],
+            "title": "Fit",
+            "type": "string"
+          },
+          "frame_size": {
+            "description": "Composition size (width, height)",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Frame Size",
+            "type": "array"
+          },
+          "orientation": {
+            "title": "Orientation",
+            "type": "string"
+          },
+          "panel": {
+            "enum": [
+              "133",
+              "315"
+            ],
+            "title": "Panel",
+            "type": "string"
+          },
+          "processed_at": {
+            "format": "date-time",
+            "title": "Processed At",
+            "type": "string"
+          },
+          "pushed": {
+            "default": true,
+            "description": "Whether the image was sent to the frame",
+            "title": "Pushed",
+            "type": "boolean"
+          },
+          "render": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The eInk profile and dithering used, and why (automatic or from settings)"
+          },
+          "rotation": {
+            "title": "Rotation",
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "SHA-256 of the .bin",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the image came from, e.g. 'upload' or 'immich'",
+            "title": "Source",
+            "type": "string"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Composition template (poster, album, title_card), if any",
+            "title": "Template"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable title or file name",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "source",
+          "panel",
+          "orientation",
+          "rotation",
+          "fit",
+          "dither",
+          "frame_size",
+          "processed_at",
+          "sha256",
+          "bin_size"
+        ],
+        "title": "CurrentImageMeta",
+        "type": "object"
+      },
+      "DeliveryOutcome": {
+        "description": "Result of a submit, push or flush.",
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "reason": {
+            "enum": [
+              "submit",
+              "force",
+              "wakeup",
+              "worker"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "status": {
+            "description": "dropped = the queued image had expired and was discarded",
+            "enum": [
+              "delivered",
+              "queued",
+              "nothing_pending",
+              "dropped"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "DeliveryOutcome",
+        "type": "object"
+      },
+      "DeliveryStatus": {
+        "description": "Upload queue state.",
+        "properties": {
+          "last_delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "description": "Whether an image is waiting for the frame",
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "pending_upload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingUpload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pending"
+        ],
+        "title": "DeliveryStatus",
+        "type": "object"
+      },
+      "DisplayResult": {
+        "description": "Result of displaying an image.",
+        "properties": {
+          "deduplicated": {
+            "default": false,
+            "description": "The same content was already displayed: only its expiry was extended",
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Frame delivery outcome (null when push was disabled)"
+          },
+          "image": {
+            "$ref": "#/components/schemas/CurrentImageMeta"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "DisplayResult",
+        "type": "object"
+      },
+      "EphemeralView": {
+        "description": "The ephemeral image currently shown or queued (``GET /api/queue``, ``/api/status``).",
+        "properties": {
+          "active": {
+            "description": "Whether the current image is ephemeral",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the previous image comes back (null = until replaced)",
+            "title": "Expires At"
+          },
+          "has_base": {
+            "description": "Whether a previous image exists to come back to",
+            "title": "Has Base",
+            "type": "boolean"
+          },
+          "pending": {
+            "description": "Whether an ephemeral image waits for a sleeping frame",
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "active",
+          "pending",
+          "has_base"
+        ],
+        "title": "EphemeralView",
+        "type": "object"
+      },
+      "FlagInput": {
+        "additionalProperties": false,
+        "description": "``{\"value\": true, \"ttl_minutes\": 30}``.",
+        "properties": {
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Minutes"
+          },
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "FlagInput",
+        "type": "object"
+      },
+      "FrameInfo": {
+        "description": "Frame telemetry parsed leniently from ``GET /api/info``.",
+        "properties": {
+          "battery_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Battery level (%)",
+            "title": "Battery Percent"
+          },
+          "charging": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the battery is charging",
+            "title": "Charging"
+          },
+          "firmware_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Firmware version",
+            "title": "Firmware Version"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Frame IP address",
+            "title": "Ip"
+          },
+          "raw": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Full JSON response",
+            "title": "Raw",
+            "type": "object"
+          },
+          "rssi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wi-Fi signal strength (dBm)",
+            "title": "Rssi"
+          }
+        },
+        "title": "FrameInfo",
+        "type": "object"
+      },
+      "FrameStatus": {
+        "description": "Configured frame characteristics.",
+        "properties": {
+          "configured": {
+            "description": "Whether a frame host is configured",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "frame_size": {
+            "description": "Composition size (width, height)",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Frame Size",
+            "type": "array"
+          },
+          "orientation": {
+            "title": "Orientation",
+            "type": "string"
+          },
+          "panel": {
+            "description": "Panel model key (133 or 315)",
+            "title": "Panel",
+            "type": "string"
+          },
+          "panel_label": {
+            "title": "Panel Label",
+            "type": "string"
+          },
+          "power_mode": {
+            "title": "Power Mode",
+            "type": "string"
+          },
+          "telemetry": {
+            "$ref": "#/components/schemas/FrameTelemetry",
+            "description": "Last known frame state (no live query)"
+          }
+        },
+        "required": [
+          "panel",
+          "panel_label",
+          "power_mode",
+          "orientation",
+          "frame_size",
+          "configured",
+          "telemetry"
+        ],
+        "title": "FrameStatus",
+        "type": "object"
+      },
+      "FrameTelemetry": {
+        "description": "Last known frame state (updated whenever the frame is contacted).",
+        "properties": {
+          "info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrameInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_checked": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "online": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None = never contacted",
+            "title": "Online"
+          }
+        },
+        "title": "FrameTelemetry",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Liveness probe and compatibility handshake (public: no credentials needed).",
+        "properties": {
+          "api_version": {
+            "description": "Contract version this engine speaks (breaking changes only)",
+            "title": "Api Version",
+            "type": "integer"
+          },
+          "auth": {
+            "description": "Credentials the other endpoints need (same values as the Zeroconf record)",
+            "enum": [
+              "open",
+              "key",
+              "password"
+            ],
+            "title": "Auth",
+            "type": "string"
+          },
+          "capabilities": {
+            "description": "Sorted feature flags of this engine; only ever added within a contract version",
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "min_api_version": {
+            "description": "Oldest contract version still served; a client implementing contract N is compatible when min_api_version <= N <= api_version",
+            "title": "Min Api Version",
+            "type": "integer"
+          },
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "description": "Engine version (PEP 440, e.g. 1.0.0rc1)",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "api_version",
+          "min_api_version",
+          "auth",
+          "capabilities"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ImmichDisplayRequest": {
+        "additionalProperties": false,
+        "description": "Which Immich photo to show (``POST /api/display/immich``).\n\nEvery field except ``mode`` is optional: unset filters fall back to the ``immich``\nsection of the runtime configuration. People are plain names; the provider resolves\nthem to Immich person IDs per account (see ``immich.person_aliases``).",
+        "properties": {
+          "accounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Limit the selection to these account names",
+            "title": "Accounts"
+          },
+          "album_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Album ID (alternative to the name)",
+            "title": "Album Id"
+          },
+          "album_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Album name (case-insensitive)",
+            "title": "Album Name"
+          },
+          "always_include": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Names merged into persons (default: immich.always_include; [] disables)",
+            "title": "Always Include"
+          },
+          "clip_queries": {
+            "description": "CLIP search phrases (mode=search)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Clip Queries",
+            "type": "array"
+          },
+          "ephemeral": {
+            "default": false,
+            "description": "Temporary push: do not make this request the rule replayed by POST /api/refresh when nothing is pinned, nor the image restored after DELETE /api/queue/ephemeral",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "smart_crop",
+                  "contain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the default fit mode",
+            "title": "Fit"
+          },
+          "hold_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keep this image up for at least this long before a scheduled refresh",
+            "title": "Hold Minutes"
+          },
+          "ignore_history": {
+            "default": false,
+            "description": "Allow photos shown within anti_repeat_days or taken close to one",
+            "title": "Ignore History",
+            "type": "boolean"
+          },
+          "match_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "any",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "any or all of the persons (default: immich.match_mode)",
+            "title": "Match Mode"
+          },
+          "mode": {
+            "default": "random",
+            "description": "random = any matching photo; album = from an album; favorites = favorites only; search = CLIP text search",
+            "enum": [
+              "random",
+              "album",
+              "favorites",
+              "search"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "on_this_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OnThisDay"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Memories: photos taken around today's date in previous years (evaluated at display time; exclusive with taken_after/taken_before)"
+          },
+          "persons": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Person names (default: immich.persons)",
+            "title": "Persons"
+          },
+          "push_to_fraimic": {
+            "default": true,
+            "description": "Send the result to the frame (or queue it in deepsleep mode); false only renders a preview (/api/preview.jpg)",
+            "title": "Push To Fraimic",
+            "type": "boolean"
+          },
+          "skip_quality_gate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skip the photo suitability check. Default: skipped in album mode (you picked the album yourself), checked otherwise",
+            "title": "Skip Quality Gate"
+          },
+          "taken_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only photos taken at or after this moment (ISO 8601)",
+            "title": "Taken After"
+          },
+          "taken_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only photos taken at or before this moment (ISO 8601)",
+            "title": "Taken Before"
+          },
+          "whole_library": {
+            "default": false,
+            "description": "Ignore the default persons, album and favorites filters (Random Discovery)",
+            "title": "Whole Library",
+            "type": "boolean"
+          }
+        },
+        "title": "ImmichDisplayRequest",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "LastDelivery": {
+        "description": "The most recent successful upload.",
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "title": "Delivered At",
+            "type": "string"
+          },
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          },
+          "reason": {
+            "enum": [
+              "submit",
+              "force",
+              "wakeup",
+              "worker"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "delivered_at",
+          "duration_s",
+          "bytes",
+          "reason"
+        ],
+        "title": "LastDelivery",
+        "type": "object"
+      },
+      "LastRun": {
+        "description": "Outcome of the most recent refresh attempt (scheduled or manual).",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Skip reason or error message",
+            "title": "Detail"
+          },
+          "entry_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Position in smart_mix.entries",
+            "title": "Entry Index"
+          },
+          "entry_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Smart Mix entry that was shown",
+            "title": "Entry Label"
+          },
+          "reason": {
+            "enum": [
+              "scheduled",
+              "manual",
+              "revert"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "rule_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Kind"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "reason",
+          "status"
+        ],
+        "title": "LastRun",
+        "type": "object"
+      },
+      "ListInput": {
+        "additionalProperties": false,
+        "description": "``{\"values\": [...], \"ttl_minutes\": 30}``: a list with its own lifetime.",
+        "properties": {
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Minutes"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "ListInput",
+        "type": "object"
+      },
+      "LogLine": {
+        "description": "One captured log record (secrets already redacted).",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "DEBUG",
+              "INFO",
+              "WARNING",
+              "ERROR",
+              "CRITICAL"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "logger": {
+            "title": "Logger",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "level",
+          "logger",
+          "message"
+        ],
+        "title": "LogLine",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "description": "Credentials of the web UI login.",
+        "properties": {
+          "password": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "default": "admin",
+            "maxLength": 64,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "MixEntryView": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "probability": {
+            "description": "Chance of being tried first at the next refresh",
+            "title": "Probability",
+            "type": "number"
+          },
+          "resolved_params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "params with {season}/{month_name}... expanded for now",
+            "title": "Resolved Params",
+            "type": "object"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "index",
+          "label",
+          "kind",
+          "weight",
+          "enabled",
+          "probability",
+          "params",
+          "resolved_params"
+        ],
+        "title": "MixEntryView",
+        "type": "object"
+      },
+      "NowPlayingRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /api/display/now-playing``.",
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Album name (media_album_name)",
+            "title": "Album"
+          },
+          "artist": {
+            "description": "Artist (media_artist)",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Artist",
+            "type": "string"
+          },
+          "artwork_base64": {
+            "anyOf": [
+              {
+                "maxLength": 40000000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cover as base64 (or a data: URI); tried before artwork_url",
+            "title": "Artwork Base64"
+          },
+          "artwork_url": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cover URL, e.g. the absolute URL of the media_player entity_picture",
+            "title": "Artwork Url"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Track length (media_duration)",
+            "title": "Duration Seconds"
+          },
+          "enrich_artwork": {
+            "default": true,
+            "description": "When no usable cover was provided, look one up on Deezer, then MusicBrainz / Cover Art Archive",
+            "title": "Enrich Artwork",
+            "type": "boolean"
+          },
+          "ephemeral": {
+            "default": true,
+            "description": "Temporary cover: the previous image comes back when it expires or on DELETE /api/queue/ephemeral",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "hold_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Protect the cover from scheduled refreshes for this long",
+            "title": "Hold Minutes"
+          },
+          "position_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Playback position (media_position)",
+            "title": "Position Seconds"
+          },
+          "push_to_fraimic": {
+            "default": true,
+            "description": "Send to the frame; false only renders a preview",
+            "title": "Push To Fraimic",
+            "type": "boolean"
+          },
+          "show_title": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Print the track title on the cover (default music.show_track_title). Without it, every track of the same album shares one picture, so the frame is only refreshed when the album changes. Ignored (title shown) when there is no album",
+            "title": "Show Title"
+          },
+          "style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sleeve",
+                  "vinyl"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "sleeve or vinyl (default music.default_style)",
+            "title": "Style"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Track title (media_title). Optional when an album is given",
+            "title": "Title"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit cover lifetime (overrides the duration-based one)",
+            "title": "Ttl Seconds"
+          }
+        },
+        "required": [
+          "artist"
+        ],
+        "title": "NowPlayingRequest",
+        "type": "object"
+      },
+      "OnThisDay": {
+        "additionalProperties": false,
+        "description": "\"On this day\" memories: photos taken around today's date in previous years.",
+        "properties": {
+          "min_years_ago": {
+            "default": 1,
+            "description": "Skip the most recent years (1 = exclude this year)",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Min Years Ago",
+            "type": "integer"
+          },
+          "window_days": {
+            "default": 3,
+            "description": "Days before and after today's date to include",
+            "maximum": 31.0,
+            "minimum": 0.0,
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "years_back": {
+            "default": 10,
+            "description": "How many past years to search",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Years Back",
+            "type": "integer"
+          }
+        },
+        "title": "OnThisDay",
+        "type": "object"
+      },
+      "PendingUpload": {
+        "description": "Metadata of the image waiting for the frame (persisted as ``pending.json``).",
+        "properties": {
+          "attempts": {
+            "default": 0,
+            "description": "Failed delivery attempts so far",
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "content_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identity of the displayed content (deduplication)",
+            "title": "Content Key"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ephemeral": {
+            "default": false,
+            "description": "Temporary image (now playing, poster): can be cancelled",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dropped instead of delivered after this time",
+            "title": "Expires At"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "panel": {
+            "enum": [
+              "133",
+              "315"
+            ],
+            "title": "Panel",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "sha256",
+          "size",
+          "panel",
+          "created_at"
+        ],
+        "title": "PendingUpload",
+        "type": "object"
+      },
+      "PeopleResponse": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountPeopleView"
+            },
+            "title": "Accounts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "title": "PeopleResponse",
+        "type": "object"
+      },
+      "PersonView": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PersonView",
+        "type": "object"
+      },
+      "PlaygroundResult": {
+        "description": "Body of ``POST /api/playground/render``.",
+        "properties": {
+          "frame_size": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Frame Size",
+            "type": "array"
+          },
+          "template": {
+            "enum": [
+              "none",
+              "poster",
+              "album",
+              "title_card"
+            ],
+            "title": "Template",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantResult"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "template",
+          "frame_size",
+          "variants"
+        ],
+        "title": "PlaygroundResult",
+        "type": "object"
+      },
+      "PlaygroundVariant": {
+        "additionalProperties": false,
+        "description": "One rendering to try: ``auto`` lets the engine decide, like a real display.",
+        "properties": {
+          "dither": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "atkinson",
+              "atkinson-classic",
+              "fs",
+              "floyd_steinberg",
+              "fs-serpentine",
+              "stucki",
+              "blue-noise"
+            ],
+            "title": "Dither",
+            "type": "string"
+          },
+          "profile": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "official",
+              "photo",
+              "soft",
+              "vivid",
+              "natural"
+            ],
+            "title": "Profile",
+            "type": "string"
+          }
+        },
+        "title": "PlaygroundVariant",
+        "type": "object"
+      },
+      "QueueView": {
+        "description": "The upload queue and the ephemeral image state.",
+        "properties": {
+          "ephemeral": {
+            "$ref": "#/components/schemas/EphemeralView"
+          },
+          "last_delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingUpload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The image waiting for the frame (expired images are dropped, not listed)"
+          },
+          "power_mode": {
+            "enum": [
+              "continuous",
+              "deepsleep"
+            ],
+            "title": "Power Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "power_mode",
+          "pending",
+          "last_delivery",
+          "ephemeral"
+        ],
+        "title": "QueueView",
+        "type": "object"
+      },
+      "QuietHoursView": {
+        "description": "The configured quiet window (local time of ``timezone``).",
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "QuietHoursView",
+        "type": "object"
+      },
+      "RefreshResult": {
+        "description": "Outcome of a manual refresh.",
+        "properties": {
+          "display": {
+            "$ref": "#/components/schemas/DisplayResult"
+          },
+          "entry_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Smart Mix entry that was shown (smart_mix only)",
+            "title": "Entry Label"
+          },
+          "reason": {
+            "const": "manual",
+            "default": "manual",
+            "title": "Reason",
+            "type": "string"
+          },
+          "rule_kind": {
+            "description": "Source of the replayed rule (immich, tmdb)",
+            "title": "Rule Kind",
+            "type": "string"
+          },
+          "rule_source": {
+            "description": "pinned = scheduler.source_rule; smart_mix = the weighted playlist; last = the last manual display request",
+            "enum": [
+              "pinned",
+              "smart_mix",
+              "last"
+            ],
+            "title": "Rule Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_kind",
+          "rule_source",
+          "display"
+        ],
+        "title": "RefreshResult",
+        "type": "object"
+      },
+      "RenderDecision": {
+        "description": "What the renderer used for one image, and why (reported in the image metadata).",
+        "properties": {
+          "automatic": {
+            "description": "At least one of profile / dither was chosen by 'auto'",
+            "title": "Automatic",
+            "type": "boolean"
+          },
+          "context": {
+            "enum": [
+              "photo",
+              "poster",
+              "album",
+              "title_card"
+            ],
+            "title": "Context",
+            "type": "string"
+          },
+          "dither": {
+            "enum": [
+              "atkinson",
+              "atkinson-classic",
+              "fs",
+              "floyd_steinberg",
+              "fs-serpentine",
+              "stucki",
+              "blue-noise"
+            ],
+            "title": "Dither",
+            "type": "string"
+          },
+          "profile": {
+            "enum": [
+              "official",
+              "photo",
+              "soft",
+              "vivid",
+              "natural"
+            ],
+            "title": "Profile",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "context",
+          "profile",
+          "dither",
+          "automatic"
+        ],
+        "title": "RenderDecision",
+        "type": "object"
+      },
+      "RenderEvent": {
+        "description": "One change of the current image.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "ephemeral": {
+            "default": false,
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "render": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "at",
+          "source",
+          "sha256"
+        ],
+        "title": "RenderEvent",
+        "type": "object"
+      },
+      "ResetRequest": {
+        "description": "Paths to reset; omit or send ``null`` to reset everything.",
+        "properties": {
+          "paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Entries like 'immich' (whole section) or 'immich.accounts' (single field)",
+            "examples": [
+              [
+                "immich.accounts",
+                "eink"
+              ]
+            ],
+            "title": "Paths"
+          }
+        },
+        "title": "ResetRequest",
+        "type": "object"
+      },
+      "SchedulerSnapshot": {
+        "description": "Scheduler state exposed through ``GET /api/status`` (no network access).",
+        "properties": {
+          "active_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActiveRuleView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until something can be replayed"
+          },
+          "ambient": {
+            "$ref": "#/components/schemas/AmbientState",
+            "description": "Live ambient context (POST /api/context)"
+          },
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hold_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A directly pushed image is protected from scheduled refreshes until then",
+            "title": "Hold Until"
+          },
+          "in_quiet_hours": {
+            "title": "In Quiet Hours",
+            "type": "boolean"
+          },
+          "interval_hours": {
+            "title": "Interval Hours",
+            "type": "number"
+          },
+          "last_display_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Display At"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled refresh in the scheduler timezone (null when disabled)",
+            "title": "Next Run At"
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuietHoursView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null when quiet hours are off"
+          },
+          "running": {
+            "description": "Whether a refresh is in progress",
+            "title": "Running",
+            "type": "boolean"
+          },
+          "smart_mix": {
+            "$ref": "#/components/schemas/SmartMixStatus"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "interval_hours",
+          "timezone",
+          "quiet_hours",
+          "in_quiet_hours",
+          "next_run_at",
+          "running",
+          "last_run",
+          "last_display_at",
+          "consecutive_failures",
+          "hold_until",
+          "smart_mix",
+          "ambient",
+          "active_rule"
+        ],
+        "title": "SchedulerSnapshot",
+        "type": "object"
+      },
+      "ServiceConfigured": {
+        "description": "Whether each external service has the settings it needs.",
+        "properties": {
+          "immich": {
+            "title": "Immich",
+            "type": "boolean"
+          },
+          "tmdb": {
+            "title": "Tmdb",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "immich",
+          "tmdb"
+        ],
+        "title": "ServiceConfigured",
+        "type": "object"
+      },
+      "SessionView": {
+        "description": "Who the caller is, and how the instance is protected.",
+        "properties": {
+          "api_key_source": {
+            "description": "env (APP_API_KEY), generated or none",
+            "enum": [
+              "env",
+              "generated",
+              "none"
+            ],
+            "title": "Api Key Source",
+            "type": "string"
+          },
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Session expiry",
+            "title": "Expires At"
+          },
+          "mode": {
+            "description": "open = no authentication; key = API key only; password = admin login",
+            "enum": [
+              "open",
+              "key",
+              "password"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "enum": [
+                  "api_key",
+                  "session"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "api_key or session",
+            "title": "Via"
+          }
+        },
+        "required": [
+          "mode",
+          "authenticated",
+          "api_key_source"
+        ],
+        "title": "SessionView",
+        "type": "object"
+      },
+      "SmartMixStatus": {
+        "description": "Smart Mix summary for ``GET /api/status``.",
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Live temporary boost, if any"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "entries": {
+            "description": "Enabled playlist entries",
+            "title": "Entries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "entries",
+          "context"
+        ],
+        "title": "SmartMixStatus",
+        "type": "object"
+      },
+      "SmartMixView": {
+        "properties": {
+          "avoid_consecutive": {
+            "title": "Avoid Consecutive",
+            "type": "boolean"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective": {
+            "description": "Whether scheduled refreshes currently use the mix",
+            "title": "Effective",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MixEntryView"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "hemisphere": {
+            "title": "Hemisphere",
+            "type": "string"
+          },
+          "last_entry_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Entry Index"
+          },
+          "last_entry_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Entry Label"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "supported_kinds": {
+            "description": "Source kinds that can run (runner registry)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Kinds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "effective",
+          "supported_kinds",
+          "max_attempts",
+          "avoid_consecutive",
+          "hemisphere",
+          "entries",
+          "context",
+          "last_entry_index",
+          "last_entry_label"
+        ],
+        "title": "SmartMixView",
+        "type": "object"
+      },
+      "SmartSearchRequest": {
+        "additionalProperties": false,
+        "description": "A contextual search over the photo library (people are plain names).",
+        "properties": {
+          "accounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounts"
+          },
+          "ephemeral": {
+            "default": true,
+            "description": "Temporary push: not stored as the rule replayed by POST /api/refresh",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "smart_crop",
+                  "contain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fit"
+          },
+          "hold_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Protect the image from scheduled refreshes",
+            "title": "Hold Minutes"
+          },
+          "ignore_history": {
+            "default": false,
+            "title": "Ignore History",
+            "type": "boolean"
+          },
+          "match_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "any",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Mode"
+          },
+          "on_this_day": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/components/schemas/OnThisDay"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Memories around today's date in past years (true = defaults)",
+            "title": "On This Day"
+          },
+          "persons": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Person names (optional)",
+            "title": "Persons"
+          },
+          "push_to_fraimic": {
+            "default": true,
+            "description": "Send to the frame; false only renders a preview",
+            "title": "Push To Fraimic",
+            "type": "boolean"
+          },
+          "queries": {
+            "description": "More phrases (a photo matching any)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Queries",
+            "type": "array"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One semantic phrase, e.g. \"rainy sunday\"",
+            "title": "Query"
+          },
+          "skip_quality_gate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Quality Gate"
+          },
+          "taken_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken After"
+          },
+          "taken_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Before"
+          }
+        },
+        "title": "SmartSearchRequest",
+        "type": "object"
+      },
+      "SourceRule": {
+        "additionalProperties": false,
+        "description": "A replayable source request (``/api/refresh`` and the scheduler).\n\n``params`` holds the request body of the matching display endpoint, e.g. for\n``immich`` the fields of ``POST /api/display/immich`` (``persons``, ``album_name``...).",
+        "properties": {
+          "kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SourceRule",
+        "type": "object"
+      },
+      "StatusResponse": {
+        "description": "Overall system status.",
+        "properties": {
+          "auth_enabled": {
+            "title": "Auth Enabled",
+            "type": "boolean"
+          },
+          "auth_mode": {
+            "description": "open, key (API key only) or password (admin login)",
+            "title": "Auth Mode",
+            "type": "string"
+          },
+          "current_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentImageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Metadata of the current image (null before the first one)"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/DeliveryStatus"
+          },
+          "ephemeral": {
+            "$ref": "#/components/schemas/EphemeralView",
+            "description": "Temporary image (now playing, poster) shown or queued, and its expiry"
+          },
+          "frame": {
+            "$ref": "#/components/schemas/FrameStatus"
+          },
+          "public_image_endpoints": {
+            "title": "Public Image Endpoints",
+            "type": "boolean"
+          },
+          "scheduler": {
+            "$ref": "#/components/schemas/SchedulerSnapshot",
+            "description": "Autonomous refresh: timer and last run"
+          },
+          "services": {
+            "$ref": "#/components/schemas/ServiceConfigured"
+          },
+          "uptime_s": {
+            "title": "Uptime S",
+            "type": "number"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "uptime_s",
+          "auth_enabled",
+          "auth_mode",
+          "public_image_endpoints",
+          "frame",
+          "delivery",
+          "scheduler",
+          "ephemeral",
+          "services"
+        ],
+        "title": "StatusResponse",
+        "type": "object"
+      },
+      "TextInput": {
+        "additionalProperties": false,
+        "description": "``{\"value\": \"rainy\", \"ttl_minutes\": 30}``.",
+        "properties": {
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Minutes"
+          },
+          "value": {
+            "maxLength": 80,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "TextInput",
+        "type": "object"
+      },
+      "TimedFlag": {
+        "additionalProperties": false,
+        "description": "A boolean with an expiry.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value",
+          "expires_at"
+        ],
+        "title": "TimedFlag",
+        "type": "object"
+      },
+      "TimedList": {
+        "additionalProperties": false,
+        "description": "A list of names or phrases with an expiry.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "values",
+          "expires_at"
+        ],
+        "title": "TimedList",
+        "type": "object"
+      },
+      "TimedText": {
+        "additionalProperties": false,
+        "description": "One word or phrase with an expiry.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "expires_at"
+        ],
+        "title": "TimedText",
+        "type": "object"
+      },
+      "TitleCardRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /api/display/title-card``.",
+        "properties": {
+          "accent": {
+            "default": "red",
+            "description": "Color of the rule under the title",
+            "enum": [
+              "red",
+              "yellow",
+              "blue",
+              "green",
+              "white"
+            ],
+            "title": "Accent",
+            "type": "string"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Small text below",
+            "title": "Caption"
+          },
+          "ephemeral": {
+            "default": true,
+            "description": "Temporary: the previous image comes back afterwards",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "hold_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Protect it from scheduled refreshes",
+            "title": "Hold Minutes"
+          },
+          "push_to_fraimic": {
+            "default": true,
+            "description": "false only renders a preview (/api/preview.jpg)",
+            "title": "Push To Fraimic",
+            "type": "boolean"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "title": {
+            "description": "Large centered text",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 60,
+            "description": "Ephemeral only: minutes before the previous image returns (null = until cancelled or replaced)",
+            "title": "Ttl Minutes"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "TitleCardRequest",
+        "type": "object"
+      },
+      "TmdbDisplayRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /api/display/tmdb`` (and of replayable ``tmdb`` rules).",
+        "properties": {
+          "ephemeral": {
+            "default": true,
+            "description": "Temporary poster: the previous image comes back after ttl_minutes or DELETE /api/queue/ephemeral, and the request is not replayed by POST /api/refresh",
+            "title": "Ephemeral",
+            "type": "boolean"
+          },
+          "fallback_base64": {
+            "anyOf": [
+              {
+                "maxLength": 40000000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Same as fallback_url, as base64 (or a data: URI); tried first",
+            "title": "Fallback Base64"
+          },
+          "fallback_url": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Picture used when TMDB has no match, e.g. the absolute URL of the Home Assistant media_player entity_picture",
+            "title": "Fallback Url"
+          },
+          "hold_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Protect the poster from scheduled refreshes (default tmdb.hold_minutes)",
+            "title": "Hold Minutes"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides tmdb.language for this request, e.g. fr-CA",
+            "title": "Language"
+          },
+          "media_type": {
+            "default": "multi",
+            "description": "movie, tv, or multi (both; 'auto' is accepted)",
+            "enum": [
+              "movie",
+              "tv",
+              "multi"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "push_to_fraimic": {
+            "default": true,
+            "description": "Send to the frame; false only renders a preview",
+            "title": "Push To Fraimic",
+            "type": "boolean"
+          },
+          "query": {
+            "description": "Movie or series title ('title' is accepted as an alias)",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "TV only: prefer this season's poster",
+            "title": "Season"
+          },
+          "ttl_minutes": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ephemeral lifetime (default tmdb.ephemeral_ttl_minutes)",
+            "title": "Ttl Minutes"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "maximum": 2200.0,
+                "minimum": 1870.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Release year",
+            "title": "Year"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "TmdbDisplayRequest",
+        "type": "object"
+      },
+      "TmdbSearchHit": {
+        "description": "One movie or series in ``GET /api/tmdb/search``.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "original_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Title"
+          },
+          "poster_thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Small poster URL on the public TMDB image CDN",
+            "title": "Poster Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "media_type",
+          "title"
+        ],
+        "title": "TmdbSearchHit",
+        "type": "object"
+      },
+      "TmdbTestRequest": {
+        "description": "Test the stored key, or an unsaved one typed in the UI.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unsaved key (empty or masked = the stored one)",
+            "title": "Api Key"
+          }
+        },
+        "title": "TmdbTestRequest",
+        "type": "object"
+      },
+      "TmdbTestResult": {
+        "description": "Outcome of a TMDB key test.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "TmdbTestResult",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VariantResult": {
+        "description": "The output of one variant, as data URLs ready for an ``<img>``.",
+        "properties": {
+          "composed": {
+            "description": "data:image/jpeg URL of the composition (before dither)",
+            "title": "Composed",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was actually used, and why"
+          },
+          "dithered": {
+            "description": "data:image/png URL of the exact 6-color panel output",
+            "title": "Dithered",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "description": "Rendering time (compose + dither + encode)",
+            "title": "Elapsed Ms",
+            "type": "number"
+          },
+          "requested": {
+            "$ref": "#/components/schemas/PlaygroundVariant"
+          }
+        },
+        "required": [
+          "requested",
+          "decision",
+          "composed",
+          "dithered",
+          "elapsed_ms"
+        ],
+        "title": "VariantResult",
+        "type": "object"
+      },
+      "WakeupAccepted": {
+        "description": "Response of a non-blocking wake-up.",
+        "properties": {
+          "accepted": {
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "pending": {
+            "description": "Whether an image was waiting for the frame",
+            "title": "Pending",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pending"
+        ],
+        "title": "WakeupAccepted",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "description": "API key (or a web UI login session). Also accepted as 'Authorization: Bearer <key>' or '?api_key='.",
+        "in": "header",
+        "name": "X-API-Key",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "\nFetch images from modular sources (Immich, TMDB posters, URLs), optimize them for a\ncolor eInk panel and push them to a Fraimic frame.\n\n**Authentication:** with `ADMIN_PASSWORD` set, every route except `/api/health`, the login\nand the public images needs a web UI session or the API key. With only `APP_API_KEY`, every\n`POST`/`PUT`/`DELETE` route and `/api/config` need the key. Send it as `X-API-Key`,\n`Authorization: Bearer <key>` or `?api_key=`; use **Authorize** above.\n",
+    "title": "Smart Frame Engine",
+    "version": "1.0.0rc1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/activity": {
+      "get": {
+        "description": "The last displayed images (with their render decision) and the last log lines.\n\nKept in memory only (lost on restart). Log lines have secrets redacted. Protected by the\nAPI key (or a web UI session) whenever authentication is enabled.",
+        "operationId": "activity_api_activity_get",
+        "parameters": [
+          {
+            "description": "Maximum number of log lines",
+            "in": "query",
+            "name": "logs",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "description": "Maximum number of log lines",
+              "maximum": 200,
+              "minimum": 0,
+              "title": "Logs",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivitySnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Recent renders and log lines (newest first)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/auth/api-key": {
+      "get": {
+        "description": "The key Home Assistant and the frame use (``X-API-Key`` / ``Authorization: Bearer``).",
+        "operationId": "api_key_api_auth_api_key_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Show the API key",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/api-key/regenerate": {
+      "post": {
+        "description": "Replace the stored API key; clients using the old one must be updated.",
+        "operationId": "regenerate_api_key_api_auth_api_key_regenerate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only a signed-in admin session can regenerate the key"
+          },
+          "409": {
+            "description": "APP_API_KEY manages the key, or no ADMIN_PASSWORD is set"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Generate a new API key",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "description": "Check ``admin`` + ``ADMIN_PASSWORD`` and set an HttpOnly session cookie.\n\nWithout ``ADMIN_PASSWORD`` but with an API key, the API key is accepted as the password.",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Wrong user name or password"
+          },
+          "409": {
+            "description": "No login is configured (set ADMIN_PASSWORD)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many failed attempts; see Retry-After"
+          }
+        },
+        "summary": "Sign in to the web UI",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Remove the session cookie.",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Sign out of the web UI",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "description": "Authentication mode and whether the caller is signed in (always reachable).",
+        "operationId": "session_api_auth_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Current session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/config": {
+      "get": {
+        "description": "Return the effective configuration (secrets masked) and where each value comes from.",
+        "operationId": "read_config_api_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Read the runtime configuration",
+        "tags": [
+          "config"
+        ]
+      },
+      "put": {
+        "description": "Validate and save a partial update to ``/data/config.json``.\n\nSaved values take precedence over ``.env``. Nothing is written if validation fails.",
+        "operationId": "update_config_api_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "fraimic": {
+                  "summary": "Battery-powered frame",
+                  "value": {
+                    "fraimic": {
+                      "host": "fraimic.local",
+                      "power_mode": "deepsleep"
+                    }
+                  }
+                },
+                "immich": {
+                  "summary": "Immich defaults",
+                  "value": {
+                    "immich": {
+                      "accounts": {
+                        "default": {
+                          "api_key": "...",
+                          "url": "http://immich.local:2283"
+                        }
+                      },
+                      "match_mode": "any",
+                      "persons": [
+                        "Alice",
+                        "Bob"
+                      ]
+                    }
+                  }
+                }
+              },
+              "schema": {
+                "additionalProperties": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "description": "Partial update: {section: {field: value}}. Masked secrets are ignored.",
+                "title": "Patch",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown section or field"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigErrorResponse"
+                }
+              }
+            },
+            "description": "Resulting configuration is invalid"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Update the runtime configuration",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/reset": {
+      "post": {
+        "description": "Remove saved overrides so the values fall back to ``.env`` or built-in defaults.",
+        "operationId": "reset_config_api_config_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResetRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown section or field"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigErrorResponse"
+                }
+              }
+            },
+            "description": "Resulting configuration is invalid"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Reset saved values to .env / defaults",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/schema": {
+      "get": {
+        "description": "JSON Schema describing every section and field (used to render settings forms).",
+        "operationId": "config_schema_api_config_schema_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Config Schema Api Config Schema Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "JSON Schema of the runtime configuration",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/context": {
+      "delete": {
+        "description": "Drop every field, or only ``field``.",
+        "operationId": "clear_context_api_context_delete",
+        "parameters": [
+          {
+            "description": "Clear only this field",
+            "in": "query",
+            "name": "field",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "presence",
+                    "family_mode",
+                    "weather",
+                    "season",
+                    "boost_tags",
+                    "boost_people"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Clear only this field",
+              "title": "Field"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbientView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Clear the ambient context",
+        "tags": [
+          "context"
+        ]
+      },
+      "get": {
+        "description": "Fields that have not expired, with their expiry, and their effect.",
+        "operationId": "get_context_api_context_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbientView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "The live ambient context",
+        "tags": [
+          "context"
+        ]
+      },
+      "post": {
+        "description": "Merge the given fields into the live context.\n\nUnset fields are left alone; an empty list or text clears the field. Each field takes\neither the bare value or ``{\"values\"|\"value\": ..., \"ttl_minutes\": n}``.",
+        "operationId": "set_context_api_context_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmbientRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbientView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Unknown weather keyword or season"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Set ambient context fields (each expires on its own)",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/api/current.bin": {
+      "get": {
+        "description": "The raw ``.bin`` sent to the frame (960,000 or 2,304,000 bytes).",
+        "operationId": "current_bin_api_current_bin_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No image has been rendered yet"
+          }
+        },
+        "summary": "Current Fraimic frame buffer (.bin)",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/current.jpg": {
+      "get": {
+        "description": "The current composition as JPEG, in viewing orientation.",
+        "operationId": "current_jpeg_api_current_jpg_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No image has been rendered yet"
+          }
+        },
+        "summary": "Current image (enhanced, before dithering)",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/current_dithered.png": {
+      "get": {
+        "description": "Exact 6-color dithered preview, in viewing orientation.",
+        "operationId": "current_dithered_api_current_dithered_png_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No image has been rendered yet"
+          }
+        },
+        "summary": "Current image as rendered by the panel (6-color simulation)",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/display/immich": {
+      "post": {
+        "description": "Pick a photo from Immich, render it (face-aware crop) and make it the current image.\n\nPeople are plain names resolved per account; ``persons``, ``match_mode``, ``album_*``\nand ``always_include`` fall back to the ``immich`` section of the configuration.\nThe photo is recorded in the history so it is not shown again within\n``immich.anti_repeat_days``. When pushed to the frame, the request becomes the rule\nreplayed by ``POST /api/refresh`` and the scheduler, and the refresh timer restarts.\nWith ``ephemeral`` the request is not stored as that rule; ``hold_minutes`` keeps the\nimage up for at least that long. A direct push never changes the Smart Mix playlist.",
+        "operationId": "display_immich_api_display_immich_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImmichDisplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "No Immich account is configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Select and display an Immich photo",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/display/media": {
+      "post": {
+        "deprecated": true,
+        "description": "Same as ``POST /api/display/tmdb`` (``title`` and ``media_type: auto`` accepted).",
+        "operationId": "display_media_api_display_media_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbDisplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No poster found and tmdb.fallback_title_card is disabled"
+          },
+          "409": {
+            "description": "TMDB is not configured and tmdb.fallback_title_card is disabled"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Display a poster (alias of /api/display/tmdb)",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/display/now-playing": {
+      "post": {
+        "description": "Show the full, uncropped cover with the title, artist and album underneath.\n\nThe cover is ``artwork_base64`` / ``artwork_url`` when usable; otherwise (with\n``enrich_artwork``) a 1000x1000 cover is looked up on Deezer, then MusicBrainz / Cover\nArt Archive; otherwise a typographic card is shown.\n\nThe cover is **ephemeral** by default. It expires when the track should be over\n(``duration_seconds - position_seconds`` plus ``music.ttl_grace_seconds``, or\n``ttl_seconds``, or ``music.default_ttl_minutes``) and on\n``DELETE /api/queue/ephemeral``; the previous image then comes back. Sending the track\nthat is already displayed only moves its expiry (``deduplicated: true``), so Home\nAssistant can call this on every attribute change.",
+        "operationId": "display_now_playing_api_display_now_playing_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NowPlayingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "The cover could not be decoded as an image"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Display the album cover of the track that is playing",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/display/smart-search": {
+      "post": {
+        "description": "Search the library by meaning, time or people and display the best fresh match.\n\nPhrases may use ``{season}``, ``{month_name}``, ``{month}`` and ``{year}`` placeholders.\nWithout a phrase, ``on_this_day`` or a date range is required.",
+        "operationId": "display_smart_search_api_display_smart_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "The source is not configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Display a photo found by a contextual search",
+        "tags": [
+          "smart-mix"
+        ]
+      }
+    },
+    "/api/display/title-card": {
+      "post": {
+        "description": "Render large centered text on black with an accent rule, e.g. a welcome message.\n\nEphemeral by default: after ``ttl_minutes`` (or ``DELETE /api/queue/ephemeral``) the\nprevious image comes back.",
+        "operationId": "display_title_card_api_display_title_card_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TitleCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Display a typographic card (title, subtitle, caption)",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/display/tmdb": {
+      "post": {
+        "description": "Find the title on TMDB and show its best poster, uncropped, over a blurred backdrop.\n\nPosters are ranked for ``language`` (default ``tmdb.language``): exact language and\nregion first (``fr``/``FR``), then the same language, textless artwork, English, and\nanything else. When TMDB has no match or fails, ``fallback_base64`` / ``fallback_url``\n(e.g. the Home Assistant ``media_player`` picture) is used, then\n``/data/assets/tmdb_fallback.png``, then a typographic title card.\n\nBy default the poster is **ephemeral**: after ``ttl_minutes`` (default\n``tmdb.ephemeral_ttl_minutes``) or ``DELETE /api/queue/ephemeral`` the previous image comes\nback, and a deep-sleeping frame that wakes up later never receives an expired poster.",
+        "operationId": "display_tmdb_api_display_tmdb_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbDisplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No poster found and tmdb.fallback_title_card is disabled"
+          },
+          "409": {
+            "description": "TMDB is not configured and tmdb.fallback_title_card is disabled"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Display a movie or TV series poster",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/display/upload": {
+      "post": {
+        "description": "Render an uploaded image for the frame and make it the current image.\n\nIn ``continuous`` mode the response includes the delivery outcome; in ``deepsleep``\nmode the image is queued until the frame wakes up. A pushed upload restarts the\nrefresh timer but keeps the rule replayed by ``POST /api/refresh``.",
+        "operationId": "display_upload_api_display_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_display_upload_api_display_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "description": "File larger than MAX_UPLOAD_MB"
+          },
+          "415": {
+            "description": "Not a supported image (JPEG, PNG, WebP, GIF, TIFF, BMP, HEIC)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Display an uploaded image",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/fraimic/info": {
+      "get": {
+        "description": "Return the last known telemetry, or query the frame with ``?refresh=true``.",
+        "operationId": "frame_info_api_fraimic_info_get",
+        "parameters": [
+          {
+            "description": "Query the frame now instead of returning cached values",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Query the frame now instead of returning cached values",
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrameTelemetry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "No frame host configured"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "The frame answered with an error"
+          },
+          "504": {
+            "description": "The frame is unreachable (asleep or offline)"
+          }
+        },
+        "summary": "Frame telemetry (battery, Wi-Fi, firmware)",
+        "tags": [
+          "fraimic"
+        ]
+      }
+    },
+    "/api/fraimic/push": {
+      "post": {
+        "description": "Send ``current.bin`` now, whatever the power mode.\n\nWith ``?from_preview=true`` the latest preview is promoted first, so a template can be\nrendered with ``push_to_fraimic=false``, inspected at ``/api/preview.jpg``, then sent.\n\nReturns ``200`` when delivered and ``202`` when the frame could not be reached; the\nimage then stays queued and is retried automatically.",
+        "operationId": "force_push_api_fraimic_push_post",
+        "parameters": [
+          {
+            "description": "First make the latest preview (a push_to_fraimic=false render) the current image",
+            "in": "query",
+            "name": "from_preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "First make the latest preview (a push_to_fraimic=false render) the current image",
+              "title": "From Preview",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOutcome"
+                }
+              }
+            },
+            "description": "Delivered (or nothing was pending)"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOutcome"
+                }
+              }
+            },
+            "description": "Frame unreachable; the image stays queued"
+          },
+          "409": {
+            "description": "No current image to push"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Force push the current image to the frame",
+        "tags": [
+          "fraimic"
+        ]
+      }
+    },
+    "/api/fraimic/wakeup": {
+      "post": {
+        "description": "Flush the queued image now that the frame is reachable.\n\nBy default the upload runs in the background and the call returns ``202``\nimmediately (Home Assistant ``rest_command`` timeouts are short). With\n``?wait=true`` the delivery outcome is returned.",
+        "operationId": "wakeup_api_fraimic_wakeup_post",
+        "parameters": [
+          {
+            "description": "Wait for the upload to finish and return its outcome",
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Wait for the upload to finish and return its outcome",
+              "title": "Wait",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOutcome"
+                }
+              }
+            },
+            "description": "Delivered (or nothing was pending)"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WakeupAccepted"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DeliveryOutcome"
+                    }
+                  ],
+                  "title": "Response 202 Wakeup Api Fraimic Wakeup Post"
+                }
+              }
+            },
+            "description": "Accepted (wait=false), or frame unreachable (wait=true)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Signal that the frame is awake (Home Assistant webhook)",
+        "tags": [
+          "fraimic"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Liveness plus the compatibility handshake, readable before any credential is set up.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/immich/albums": {
+      "get": {
+        "description": "Albums (owned and shared) of every selected account.",
+        "operationId": "list_albums_api_immich_albums_get",
+        "parameters": [
+          {
+            "description": "Only these account names (default: all)",
+            "in": "query",
+            "name": "accounts",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these account names (default: all)",
+              "title": "Accounts"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "No Immich account is configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List albums",
+        "tags": [
+          "immich"
+        ]
+      }
+    },
+    "/api/immich/people": {
+      "get": {
+        "description": "Named people per account (name to ID), served from the cache while it is fresh.",
+        "operationId": "list_people_api_immich_people_get",
+        "parameters": [
+          {
+            "description": "Only these account names (default: all)",
+            "in": "query",
+            "name": "accounts",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these account names (default: all)",
+              "title": "Accounts"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "No Immich account is configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "People known to each account (cached)",
+        "tags": [
+          "immich"
+        ]
+      }
+    },
+    "/api/immich/people/refresh": {
+      "post": {
+        "description": "Bypass the cache and fetch the people lists again.",
+        "operationId": "refresh_people_api_immich_people_refresh_post",
+        "parameters": [
+          {
+            "description": "Only these account names (default: all)",
+            "in": "query",
+            "name": "accounts",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these account names (default: all)",
+              "title": "Accounts"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "No Immich account is configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Reload the people lists from Immich",
+        "tags": [
+          "immich"
+        ]
+      }
+    },
+    "/api/immich/test": {
+      "post": {
+        "description": "Check reachability, the API key and what the key can see (people and albums).",
+        "operationId": "test_connection_api_immich_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Test an Immich connection (saved or unsaved settings)",
+        "tags": [
+          "immich"
+        ]
+      }
+    },
+    "/api/immich/thumbnail/{account}/{kind}/{item_id}": {
+      "get": {
+        "description": "Proxy an Immich thumbnail with the account key, so the browser never sees Immich keys.",
+        "operationId": "thumbnail_api_immich_thumbnail__account___kind___item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "title": "Account",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "asset",
+                "person"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {},
+              "image/webp": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "No Immich account is configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Small thumbnail of an asset (album cover) or a person (face)",
+        "tags": [
+          "immich"
+        ]
+      }
+    },
+    "/api/playground/render": {
+      "post": {
+        "description": "Compare renderings side by side, e.g. ``auto`` against ``vivid`` + ``stucki``.\n\nEach variant returns the composition and the exact 6-color dithered output as data\nURLs, the decision actually applied and the rendering time. Nothing is stored, shown\non the frame or added to the history; renders wait for any display in progress.",
+        "operationId": "render_playground_api_playground_render_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_render_playground_api_playground_render_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaygroundResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "description": "File larger than MAX_UPLOAD_MB"
+          },
+          "415": {
+            "description": "Not a supported image"
+          },
+          "422": {
+            "description": "Invalid variants, or no image for a template that needs one"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Render an image with several eInk profiles / dithers (never displayed)",
+        "tags": [
+          "playground"
+        ]
+      }
+    },
+    "/api/preview.jpg": {
+      "get": {
+        "description": "The latest composition as JPEG, including ``push_to_fraimic=false`` renders.",
+        "operationId": "preview_jpeg_api_preview_jpg_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No image has been rendered yet"
+          }
+        },
+        "summary": "Most recent render (enhanced, before dithering), pushed or not",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/preview_dithered.png": {
+      "get": {
+        "description": "Exact 6-color dithered preview of the latest render, in viewing orientation.",
+        "operationId": "preview_dithered_api_preview_dithered_png_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No image has been rendered yet"
+          }
+        },
+        "summary": "Most recent render as the panel would show it (6-color simulation)",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/queue": {
+      "get": {
+        "description": "The pending upload, the last delivery and the current ephemeral image.",
+        "operationId": "get_queue_api_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Inspect the upload queue",
+        "tags": [
+          "queue"
+        ]
+      }
+    },
+    "/api/queue/ephemeral": {
+      "delete": {
+        "description": "Drop a queued movie poster or album cover and restore the previous image.\n\nCall it when playback pauses or stops. The previous non-ephemeral image becomes the\ncurrent image again; it is re-sent only if the frame may not be showing it (a sleeping\nframe that never received the cover is not woken up). Without a previous image, a\nbackground refresh replays the active rule. Calling it when nothing is ephemeral is a\nharmless no-op (``cancelled: false``).",
+        "operationId": "cancel_ephemeral_api_queue_ephemeral_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Cancel the ephemeral image (playback stopped)",
+        "tags": [
+          "queue"
+        ]
+      }
+    },
+    "/api/refresh": {
+      "post": {
+        "description": "Show a new image chosen by the active rule and push it to the frame.\n\nThe active rule is the pinned ``scheduler.source_rule`` when set, otherwise the last\nrequest made through ``POST /api/display/immich``. Unlike scheduled refreshes, a\nmanual refresh ignores quiet hours and a pending upload. It restarts the timer.",
+        "operationId": "refresh_api_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "Nothing to replay yet, the rule's source cannot be replayed, the source is not configured, or a refresh is already running"
+          },
+          "422": {
+            "description": "The rule's parameters are invalid, or name unknown people/albums"
+          },
+          "502": {
+            "description": "The source failed or returned an image that cannot be decoded"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Re-run the active source rule",
+        "tags": [
+          "display"
+        ]
+      }
+    },
+    "/api/smart-mix": {
+      "get": {
+        "description": "The playlist with each entry's effective probability and the live boost.",
+        "operationId": "get_smart_mix_api_smart_mix_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartMixView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Show the Smart Mix playlist",
+        "tags": [
+          "smart-mix"
+        ]
+      }
+    },
+    "/api/smart-mix/context": {
+      "delete": {
+        "description": "Drop the temporary boost immediately.",
+        "operationId": "clear_context_api_smart_mix_context_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Remove the Smart Mix boost",
+        "tags": [
+          "smart-mix"
+        ]
+      },
+      "post": {
+        "description": "Add a rule to the playlist (or use it alone) until ``ttl_minutes`` pass.\n\nScheduled refreshes pick it according to ``weight``; nothing is displayed right now (use\n``POST /api/display/smart-search`` for that). A new boost replaces the previous one.",
+        "operationId": "set_context_api_smart_mix_context_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Smart Mix is disabled (smart_mix.enabled)"
+          },
+          "422": {
+            "description": "Unknown source kind or invalid parameters"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Boost or override the Smart Mix temporarily",
+        "tags": [
+          "smart-mix"
+        ]
+      }
+    },
+    "/api/status": {
+      "get": {
+        "description": "Overall system status, queue state and current image (no secrets, no network).",
+        "operationId": "status_api_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/tmdb/search": {
+      "get": {
+        "description": "The most relevant matches with a poster thumbnail; nothing is displayed.",
+        "operationId": "search_api_tmdb_search_get",
+        "parameters": [
+          {
+            "description": "Title to search",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Title to search",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "movie, tv or multi",
+            "in": "query",
+            "name": "media_type",
+            "required": false,
+            "schema": {
+              "default": "multi",
+              "description": "movie, tv or multi",
+              "enum": [
+                "movie",
+                "tv",
+                "multi"
+              ],
+              "title": "Media Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2200,
+                  "minimum": 1870,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "description": "Overrides tmdb.language",
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Overrides tmdb.language",
+              "title": "Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TmdbSearchHit"
+                  },
+                  "title": "Response Search Api Tmdb Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No eligible photo matched (or all are on the anti-repeat cooldown)"
+          },
+          "409": {
+            "description": "The source is not configured"
+          },
+          "422": {
+            "description": "Unknown or ambiguous person, album or account"
+          },
+          "502": {
+            "description": "The source failed or rejected its API key"
+          },
+          "504": {
+            "description": "The source did not respond in time"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Search movies and series (for the web UI picker)",
+        "tags": [
+          "tmdb"
+        ]
+      }
+    },
+    "/api/tmdb/test": {
+      "post": {
+        "description": "Check that TMDB is reachable and accepts the key (v3 key or v4 read token).",
+        "operationId": "test_key_api_tmdb_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TmdbTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmdbTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Test a TMDB API key",
+        "tags": [
+          "tmdb"
+        ]
+      }
+    }
+  }
+}
