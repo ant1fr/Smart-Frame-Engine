@@ -1,0 +1,29 @@
+# Portainer (Stacks -> Repository, branch `develop`, compose path `docker-compose.portainer.yml`).
+#
+# Deployment settings, set as stack environment variables (all optional):
+#   HOST_PORT  published port on the host             (default 8080)
+#   DATA_PATH  host folder bound to /data             (default /srv/smart-frame/data)
+#   PUID/PGID  owner of DATA_PATH (`id -u` / `id -g`) (default 1000)
+#
+# Application settings (IMMICH_URL, TMDB_API_KEY, ADMIN_PASSWORD, TZ...) are passed through
+# `stack.env`, which Portainer generates from the stack's environment variables: only define
+# the ones you want (see .env.example). Do not define a variable with an empty value.
+#
+# Create DATA_PATH first and give it to PUID:PGID, e.g.
+#   mkdir -p /srv/smart-frame/data && chown 1000:1000 /srv/smart-frame/data
+services:
+  smart-frame-engine:
+    image: ghcr.io/ant1fr/smart-frame-engine:latest
+    build: .
+    container_name: smart-frame-engine
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - path: stack.env
+        required: false
+    # mDNS (ZEROCONF_ENABLED) needs host networking: replace `ports:` with
+    # `network_mode: host` and set PORT (the engine then listens on it directly).
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      - ${DATA_PATH:-/srv/smart-frame/data}:/data

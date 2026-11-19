@@ -1,0 +1,1350 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Smart Frame</title>
+  <script>
+    // Theme before paint: saved choice, else the system preference.
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("sfe-theme"); } catch (e) {}
+      var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.classList.toggle("dark", dark);
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>tailwind.config = { darkMode: "class" };</script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .pixelated { image-rendering: pixelated; }
+    .checker { background-image: linear-gradient(45deg, rgba(148,163,184,.15) 25%, transparent 25%), linear-gradient(-45deg, rgba(148,163,184,.15) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(148,163,184,.15) 75%), linear-gradient(-45deg, transparent 75%, rgba(148,163,184,.15) 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+    input[type=range] { accent-color: #2563eb; }
+    /* Phones: a bare grid has one auto-sized column, which a long unbroken title or URL stretches
+       past the viewport. Zero-specificity rules, so every grid-cols-* utility still wins. */
+    :where(.grid) { grid-template-columns: minmax(0, 1fr); }
+    :where(.grid) > :where(*) { min-width: 0; }
+    body { overflow-x: clip; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body class="min-h-full bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased">
+<div x-data="app()" x-init="init()" x-cloak class="min-h-full">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 h-14 flex items-center gap-3">
+      <div class="grid grid-cols-3 gap-0.5 shrink-0" aria-hidden="true">
+        <span class="h-2 w-2 rounded-[2px] bg-black dark:bg-slate-200"></span>
+        <span class="h-2 w-2 rounded-[2px] bg-red-500"></span>
+        <span class="h-2 w-2 rounded-[2px] bg-yellow-400"></span>
+        <span class="h-2 w-2 rounded-[2px] bg-blue-600"></span>
+        <span class="h-2 w-2 rounded-[2px] bg-green-500"></span>
+        <span class="h-2 w-2 rounded-[2px] bg-white ring-1 ring-slate-300 dark:ring-slate-600"></span>
+      </div>
+      <span class="font-semibold tracking-tight hidden sm:inline">Smart Frame</span>
+      <nav class="flex gap-1 ml-2 sm:ml-6" role="tablist">
+        <template x-for="t in tabs" :key="t.id">
+          <button type="button" role="tab" :aria-selected="tab === t.id" @click="setTab(t.id)"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
+            :class="tab === t.id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'"
+            x-text="t.label"></button>
+        </template>
+      </nav>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="hidden md:inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" x-show="status">
+          <span class="h-2 w-2 rounded-full" :class="frameDot()"></span>
+          <span x-text="frameLabel()"></span>
+        </span>
+        <button type="button" @click="toggleTheme()" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" :title="dark ? 'Light theme' : 'Dark theme'" aria-label="Toggle theme">
+          <svg x-show="!dark" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009-5.998z"/></svg>
+          <svg x-show="dark" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>
+        </button>
+        <button type="button" x-show="session && session.via === 'session'" @click="logout()" class="text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+
+    <!-- ============================== DASHBOARD ============================== -->
+    <section x-show="tab === 'dashboard'" class="space-y-6">
+      <div class="grid gap-6 lg:grid-cols-3">
+        <!-- Current image -->
+        <div class="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 p-4 sm:p-5">
+          <div class="flex flex-wrap items-start gap-3 mb-4">
+            <div class="min-w-0">
+              <p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Now on the frame</p>
+              <h2 class="text-lg font-semibold truncate" x-text="current() ? (current().title || current().source) : 'Nothing displayed yet'"></h2>
+              <p class="text-sm text-slate-500 dark:text-slate-400" x-show="current()">
+                <span x-text="current() && current().source"></span>
+                <template x-if="current() && current().template"><span> · <span x-text="current().template"></span></span></template>
+                · <span x-text="current() && ago(current().processed_at)"></span>
+              </p>
+            </div>
+            <div class="ml-auto flex flex-wrap gap-2">
+              <button type="button" class="btn-primary" @click="refreshNow()" :disabled="!!(busy.refresh)">
+                <span x-text="busy.refresh ? 'Loading…' : 'Next photo'"></span>
+              </button>
+              <button type="button" class="btn" @click="forcePush()" :disabled="!!(busy.push)">Force push</button>
+            </div>
+          </div>
+          <template x-if="current()">
+            <div>
+              <div class="grid grid-cols-2 gap-3">
+                <figure>
+                  <button type="button" class="block w-full rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700 bg-slate-50 dark:bg-slate-800" :style="aspect()" @click="zoom(currentUrl('current.jpg'), 'Composition')">
+                    <img :src="currentUrl('current.jpg')" alt="Current composition" class="h-full w-full object-contain" loading="lazy">
+                  </button>
+                  <figcaption class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Composition</figcaption>
+                </figure>
+                <figure>
+                  <button type="button" class="block w-full rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700 bg-slate-50 dark:bg-slate-800" :style="aspect()" @click="zoom(currentUrl('current_dithered.png'), 'Spectra 6 output')">
+                    <img :src="currentUrl('current_dithered.png')" alt="Dithered 6-color output" class="h-full w-full object-contain" loading="lazy">
+                  </button>
+                  <figcaption class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Spectra 6 output (exact pixels, click to zoom)</figcaption>
+                </figure>
+              </div>
+              <div class="mt-4 flex flex-wrap items-center gap-2" x-show="current().render">
+                <span class="badge-blue" x-text="'profile · ' + (current().render && current().render.profile)"></span>
+                <span class="badge-violet" x-text="'dither · ' + (current().render && current().render.dither)"></span>
+                <span class="badge" x-text="current().render && current().render.automatic ? 'auto' : 'manual'"></span>
+                <span class="badge" x-text="'context · ' + (current().render && current().render.context)"></span>
+              </div>
+              <ul class="mt-2 text-xs text-slate-500 dark:text-slate-400 list-disc pl-5 space-y-0.5" x-show="current().render && current().render.reasons.length">
+                <template x-for="r in (current().render ? current().render.reasons : [])"><li x-text="r"></li></template>
+              </ul>
+              <dl class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs" x-show="detailRows().length">
+                <template x-for="row in detailRows()" :key="row[0]">
+                  <div class="min-w-0"><dt class="text-slate-500 dark:text-slate-400" x-text="row[0]"></dt><dd class="truncate" x-text="row[1]" :title="row[1]"></dd></div>
+                </template>
+              </dl>
+            </div>
+          </template>
+          <template x-if="!current()">
+            <div class="rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-700 p-10 text-center text-sm text-slate-500">
+              No image yet. Press <b>Next photo</b>, or try the Playground.
+            </div>
+          </template>
+        </div>
+
+        <!-- Side column -->
+        <div class="space-y-6">
+          <!-- Mode -->
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">Mode</h3>
+              <span class="badge" :class="ephemeralActive() ? 'badge-amber' : 'badge-green'" x-text="ephemeralActive() ? 'Ephemeral' : 'Slideshow'"></span>
+            </div>
+            <template x-if="ephemeralActive()">
+              <div class="mt-3 space-y-3">
+                <p class="text-sm break-words"><span class="font-medium" x-text="status.ephemeral.title || status.ephemeral.source"></span>
+                  <span class="text-slate-500" x-show="status.ephemeral.pending"> (waiting for the frame)</span></p>
+                <div x-show="status.ephemeral.expires_at">
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Previous image returns in</p>
+                  <p class="text-2xl font-semibold tabular-nums" x-text="countdown(status.ephemeral.expires_at)"></p>
+                </div>
+                <p class="text-xs text-slate-500" x-show="!status.ephemeral.expires_at">Stays until cancelled or replaced.</p>
+                <button type="button" class="btn w-full" @click="clearEphemeral()" :disabled="!!(busy.ephemeral || !status.ephemeral.has_base)">Restore previous image</button>
+              </div>
+            </template>
+            <template x-if="status && !ephemeralActive()">
+              <div class="mt-3 space-y-2 text-sm">
+                <template x-if="status.scheduler.enabled">
+                  <div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Next refresh in</p>
+                    <p class="text-2xl font-semibold tabular-nums" x-text="status.scheduler.next_run_at ? countdown(status.scheduler.next_run_at) : '—'"></p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                      every <span x-text="status.scheduler.interval_hours"></span> h
+                      <template x-if="status.scheduler.quiet_hours"><span> · quiet <span x-text="status.scheduler.quiet_hours.start + '–' + status.scheduler.quiet_hours.end"></span></span></template>
+                      <span x-show="status.scheduler.in_quiet_hours" class="text-amber-600 dark:text-amber-400"> · quiet now</span>
+                    </p>
+                  </div>
+                </template>
+                <p x-show="!status.scheduler.enabled" class="text-slate-500 dark:text-slate-400">Automatic refresh is off (Settings → Frame &amp; schedule).</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400" x-show="status.scheduler.hold_until">Held until <span x-text="time(status.scheduler.hold_until)"></span></p>
+                <p class="text-xs" x-show="status.scheduler.active_rule">
+                  <span class="text-slate-500 dark:text-slate-400">Source:</span>
+                  <span x-text="ruleLabel()"></span>
+                </p>
+                <p class="text-xs text-red-600 dark:text-red-400" x-show="status.scheduler.last_run && status.scheduler.last_run.status === 'failed'" x-text="status.scheduler.last_run && status.scheduler.last_run.detail"></p>
+              </div>
+            </template>
+          </div>
+
+          <!-- Frame -->
+          <div class="card">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">Frame</h3>
+              <span class="inline-flex items-center gap-1.5 text-xs"><span class="h-2 w-2 rounded-full" :class="frameDot()"></span><span x-text="frameLabel()"></span></span>
+              <button type="button" class="btn !py-0.5 !text-xs ml-auto" x-show="status && status.frame.configured" @click="checkFrame(true)" :disabled="busy.frameCheck">Check now</button>
+            </div>
+            <template x-if="status">
+              <div class="mt-3 space-y-3 text-sm">
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Battery</p>
+                    <div class="flex items-center gap-2">
+                      <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                        <div class="h-full rounded-full" :class="batteryColor()" :style="'width:' + (battery() ?? 0) + '%'"></div>
+                      </div>
+                      <span class="tabular-nums text-xs" x-text="battery() === null ? '—' : Math.round(battery()) + '%' + (info() && info().charging ? ' ⚡' : '')"></span>
+                    </div>
+                  </div>
+                  <div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Wi-Fi</p>
+                    <p class="text-xs" x-text="info() && info().rssi !== null ? info().rssi + ' dBm (' + signal(info().rssi) + ')' : '—'"></p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Power mode</p>
+                    <p class="text-xs" x-text="status.frame.power_mode"></p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Last seen</p>
+                    <p class="text-xs" x-text="status.frame.telemetry.last_seen ? ago(status.frame.telemetry.last_seen) : 'never'"></p>
+                  </div>
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400" x-text="status.frame.panel_label + ' · ' + status.frame.orientation + ' · ' + status.frame.frame_size.join('×')"></p>
+                <div x-show="status.delivery.pending" class="rounded-lg bg-amber-50 dark:bg-amber-500/10 ring-1 ring-amber-200 dark:ring-amber-500/30 p-3 text-xs space-y-1">
+                  <p class="font-medium text-amber-800 dark:text-amber-300">Upload waiting for the frame</p>
+                  <template x-if="status.delivery.pending_upload">
+                    <div class="text-amber-800/80 dark:text-amber-200/80">
+                      <p x-text="(status.delivery.pending_upload.title || status.delivery.pending_upload.source || 'image') + ' · ' + status.delivery.pending_upload.attempts + ' attempt(s)'"></p>
+                      <p x-show="status.delivery.pending_upload.next_attempt_at">Next check in <span x-text="countdown(status.delivery.pending_upload.next_attempt_at)"></span></p>
+                      <p x-show="status.delivery.pending_upload.last_error" x-text="status.delivery.pending_upload.last_error"></p>
+                    </div>
+                  </template>
+                  <button type="button" class="btn !py-1 !text-xs" @click="wakeup()">Frame is awake: send now</button>
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400" x-show="status.delivery.last_delivery">
+                  Last delivery <span x-text="status.delivery.last_delivery && ago(status.delivery.last_delivery.delivered_at)"></span>
+                  (<span x-text="status.delivery.last_delivery && status.delivery.last_delivery.duration_s.toFixed(1)"></span> s)
+                </p>
+                <p class="text-xs text-red-600 dark:text-red-400" x-show="status.frame.telemetry.last_error" x-text="status.frame.telemetry.last_error"></p>
+              </div>
+            </template>
+          </div>
+
+          <!-- Ambient context -->
+          <div class="card">
+            <div class="flex items-center gap-2">
+              <h3 class="card-title">Ambient context</h3>
+              <span class="badge ml-auto" :class="ambient && ambient.family_active ? 'badge-blue' : ''" x-text="ambient && ambient.family_active ? 'Family Mode on' : 'Family Mode off'"></span>
+            </div>
+            <p class="mt-3 text-sm text-slate-500" x-show="!ambientFields().length">Nothing set. Home Assistant can post presence, weather or guests to <code>/api/context</code>.</p>
+            <ul class="mt-3 space-y-1.5 text-sm" x-show="ambientFields().length">
+              <template x-for="f in ambientFields()" :key="f.key">
+                <li class="flex justify-between gap-3"><span><span class="text-slate-500" x-text="f.label"></span> <span x-text="f.text"></span></span><span class="text-xs tabular-nums text-slate-500" x-text="countdown(f.expires_at)"></span></li>
+              </template>
+            </ul>
+            <p class="mt-2 text-xs text-amber-600 dark:text-amber-400" x-show="ambient && ambientFields().length && !ambient.smart_mix_enabled">Presence, weather and boosts only act while Smart Mix is enabled.</p>
+            <button type="button" class="btn w-full mt-3" x-show="ambientFields().length" @click="clearAmbient()" :disabled="!!(busy.ambient)">Clear context</button>
+          </div>
+
+          <!-- Services -->
+          <div class="card">
+            <h3 class="card-title">Services</h3>
+            <ul class="mt-3 space-y-1.5 text-sm" x-show="status">
+              <li class="flex justify-between"><span>Immich</span><span class="text-xs" :class="status && status.services.immich ? 'text-green-600 dark:text-green-400' : 'text-slate-400'" x-text="status && status.services.immich ? 'configured' : 'not configured'"></span></li>
+              <li class="flex justify-between"><span>TMDB</span><span class="text-xs" :class="status && status.services.tmdb ? 'text-green-600 dark:text-green-400' : 'text-slate-400'" x-text="status && status.services.tmdb ? 'configured' : 'not configured'"></span></li>
+              <li class="flex justify-between"><span>Smart Mix</span><span class="text-xs" x-text="status && status.scheduler.smart_mix.enabled ? 'on' : 'off'"></span></li>
+              <li class="flex justify-between"><span>Version</span><span class="text-xs text-slate-500" x-text="status && status.version"></span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity -->
+      <div class="grid gap-6 lg:grid-cols-2">
+        <div class="card">
+          <h3 class="card-title">Recent images</h3>
+          <p class="mt-3 text-sm text-slate-500" x-show="!activity.renders.length">Nothing since the last restart.</p>
+          <ul class="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+            <template x-for="r in activity.renders" :key="r.sha256 + r.at">
+              <li class="py-2 flex items-center gap-3 text-sm">
+                <span class="w-14 shrink-0 text-xs tabular-nums text-slate-500" x-text="clock(r.at)"></span>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate" x-text="r.title || r.source"></p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    <span x-text="r.source"></span><span x-show="r.template" x-text="' · ' + r.template"></span><span x-show="r.ephemeral" class="text-amber-600 dark:text-amber-400"> · ephemeral</span>
+                  </p>
+                </div>
+                <span class="badge shrink-0" x-show="r.render" x-text="r.render ? r.render.profile + ' / ' + r.render.dither : ''"></span>
+              </li>
+            </template>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="flex items-center gap-2">
+            <h3 class="card-title">Logs</h3>
+            <select x-model="logLevel" class="ml-auto input !w-auto !py-1 text-xs">
+              <option value="INFO">Info and above</option>
+              <option value="WARNING">Warnings and errors</option>
+              <option value="ERROR">Errors only</option>
+            </select>
+          </div>
+          <div class="mt-3 max-h-80 overflow-y-auto rounded-lg bg-slate-50 dark:bg-slate-950 ring-1 ring-slate-200 dark:ring-slate-800 font-mono text-[11px] leading-5 p-2">
+            <p class="text-slate-500" x-show="!filteredLogs().length">No log lines.</p>
+            <template x-for="(l, i) in filteredLogs()" :key="i + l.at">
+              <p class="whitespace-pre-wrap break-words">
+                <span class="text-slate-400" x-text="clock(l.at)"></span>
+                <span :class="levelColor(l.level)" x-text="l.level.padEnd(7)"></span>
+                <span class="text-slate-500" x-text="l.logger.replace(/^app\./, '')"></span>
+                <span x-text="l.message"></span>
+              </p>
+            </template>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== PLAYGROUND ============================== -->
+    <section x-show="tab === 'playground'" class="space-y-6">
+      <div class="grid gap-6 lg:grid-cols-2">
+        <!-- TMDB -->
+        <div class="card space-y-4">
+          <div>
+            <h3 class="card-title">Movie or TV poster</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Search TMDB, then preview or send the poster (ephemeral).</p>
+          </div>
+          <form class="flex gap-2" @submit.prevent="tmdbSearch()">
+            <input class="input" type="search" placeholder="Title, e.g. Intouchables" x-model="tmdb.query" required maxlength="200">
+            <select class="input !w-28" x-model="tmdb.mediaType">
+              <option value="multi">Any</option><option value="movie">Movie</option><option value="tv">TV</option>
+            </select>
+            <button class="btn-primary" :disabled="!!(busy.tmdbSearch)">Search</button>
+          </form>
+          <p class="text-sm text-slate-500" x-show="tmdb.searched && !tmdb.results.length && !busy.tmdbSearch">No match.</p>
+          <div class="grid grid-cols-3 sm:grid-cols-4 gap-3" x-show="tmdb.results.length">
+            <template x-for="hit in tmdb.results" :key="hit.media_type + hit.id">
+              <button type="button" @click="tmdb.selected = hit" class="text-left group">
+                <div class="aspect-[2/3] rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2 transition" :class="tmdb.selected === hit ? 'ring-blue-600' : 'ring-transparent group-hover:ring-slate-300 dark:group-hover:ring-slate-600'">
+                  <img x-show="hit.poster_thumbnail" :src="hit.poster_thumbnail" :alt="hit.title" class="h-full w-full object-cover" loading="lazy" referrerpolicy="no-referrer">
+                </div>
+                <p class="mt-1 text-xs font-medium truncate" x-text="hit.title"></p>
+                <p class="text-[11px] text-slate-500" x-text="(hit.year || '') + ' · ' + hit.media_type"></p>
+              </button>
+            </template>
+          </div>
+          <div class="flex flex-wrap items-center gap-2" x-show="tmdb.selected">
+            <span class="text-sm truncate max-w-full">Selected: <b x-text="tmdb.selected && tmdb.selected.title"></b></span>
+            <label class="text-xs text-slate-500 ml-auto">TTL <input type="number" min="1" max="1440" class="input !w-20 !py-1 inline" x-model.number="tmdb.ttl"> min</label>
+            <button type="button" class="btn" @click="tmdbShow(false)" :disabled="!!(busy.render)">Preview</button>
+            <button type="button" class="btn-primary" @click="tmdbShow(true)" :disabled="!!(busy.render)">Send to frame</button>
+          </div>
+        </div>
+
+        <!-- Now playing -->
+        <div class="card space-y-4">
+          <div>
+            <h3 class="card-title">Now Playing</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Album cover (Deezer, then MusicBrainz) with the artist and album underneath. The track title is optional: without it, every track of an album is the same picture and the frame does not refresh between tracks.</p>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="field"><span>Track</span><input class="input" x-model="music.title" placeholder="Billie Jean (optional with an album)" maxlength="300"></label>
+            <label class="field"><span>Artist</span><input class="input" x-model="music.artist" placeholder="Michael Jackson" maxlength="300"></label>
+            <label class="field"><span>Album</span><input class="input" x-model="music.album" placeholder="Thriller" maxlength="300"></label>
+            <label class="field"><span>Style</span>
+              <select class="input" x-model="music.style"><option value="sleeve">Sleeve</option><option value="vinyl">Vinyl</option></select>
+            </label>
+            <label class="field"><span>Track title on the cover</span>
+              <select class="input" x-model="music.showTitle"><option value="">Default (Settings)</option><option value="yes">Show</option><option value="no">Hide</option></select>
+            </label>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="music.enrich" class="rounded"> Look up the cover</label>
+            <button type="button" class="btn ml-auto" @click="musicShow(false)" :disabled="!!(busy.render || !(music.title || music.album) || !music.artist)">Preview</button>
+            <button type="button" class="btn-primary" @click="musicShow(true)" :disabled="!!(busy.render || !(music.title || music.album) || !music.artist)">Send to frame</button>
+          </div>
+        </div>
+
+        <!-- Title card -->
+        <div class="card space-y-4">
+          <div>
+            <h3 class="card-title">Title card</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Large text on black, e.g. a welcome message.</p>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="field sm:col-span-2"><span>Title</span><input class="input" x-model="card.title" placeholder="Welcome home" maxlength="200"></label>
+            <label class="field"><span>Subtitle</span><input class="input" x-model="card.subtitle" maxlength="200"></label>
+            <label class="field"><span>Caption</span><input class="input" x-model="card.caption" maxlength="200"></label>
+            <label class="field"><span>Accent</span>
+              <select class="input" x-model="card.accent">
+                <option value="red">Red</option><option value="yellow">Yellow</option><option value="blue">Blue</option><option value="green">Green</option><option value="white">White</option>
+              </select>
+            </label>
+            <label class="field"><span>Stays for (minutes)</span><input type="number" min="1" max="10080" class="input" x-model.number="card.ttl"></label>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button type="button" class="btn" @click="cardShow(false)" :disabled="!!(busy.render || !card.title.trim())">Preview</button>
+            <button type="button" class="btn-primary" @click="cardShow(true)" :disabled="!!(busy.render || !card.title.trim())">Send to frame</button>
+          </div>
+        </div>
+
+        <!-- Preview output -->
+        <div class="card space-y-3">
+          <div class="flex items-center gap-2">
+            <h3 class="card-title">Last preview</h3>
+            <span class="text-xs text-slate-500" x-show="preview" x-text="preview && (preview.title || preview.source)"></span>
+          </div>
+          <template x-if="preview">
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <button type="button" class="block rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700 bg-slate-50 dark:bg-slate-800" :style="aspect(preview.frame_size)" @click="zoom(previewUrl('preview.jpg'), 'Preview composition')">
+                  <img :src="previewUrl('preview.jpg')" alt="Preview composition" class="h-full w-full object-contain">
+                </button>
+                <button type="button" class="block rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700 bg-slate-50 dark:bg-slate-800" :style="aspect(preview.frame_size)" @click="zoom(previewUrl('preview_dithered.png'), 'Preview Spectra 6 output')">
+                  <img :src="previewUrl('preview_dithered.png')" alt="Preview dithered output" class="h-full w-full object-contain">
+                </button>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <template x-if="preview.render">
+                  <span class="flex flex-wrap gap-2">
+                    <span class="badge-blue" x-text="'profile · ' + preview.render.profile"></span>
+                    <span class="badge-violet" x-text="'dither · ' + preview.render.dither"></span>
+                  </span>
+                </template>
+                <button type="button" class="btn-primary ml-auto" @click="pushPreview()" :disabled="!!(busy.push || preview.pushed)">Send this preview</button>
+              </div>
+            </div>
+          </template>
+          <p class="text-sm text-slate-500" x-show="!preview">Use <b>Preview</b> on any card: nothing reaches the frame until you send it.</p>
+        </div>
+      </div>
+
+      <!-- Render lab -->
+      <div class="card space-y-4">
+        <div>
+          <h3 class="card-title">Render lab</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Upload an image and compare the automatic choice with manual profiles and dithering. Nothing is stored or sent.</p>
+        </div>
+        <div class="grid gap-4 lg:grid-cols-3">
+          <div class="space-y-3">
+            <label class="field"><span>Image</span>
+              <input type="file" accept="image/*" class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-white dark:file:bg-white dark:file:text-slate-900" @change="lab.file = $event.target.files[0] || null">
+            </label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="field"><span>Template</span>
+                <select class="input" x-model="lab.template">
+                  <option value="none">Photo</option><option value="poster">Poster</option><option value="album">Album cover</option>
+                </select>
+              </label>
+              <label class="field" x-show="lab.template === 'none'"><span>Fit</span>
+                <select class="input" x-model="lab.fit"><option value="">Default</option><option value="smart_crop">Smart crop</option><option value="contain">Contain</option></select>
+              </label>
+            </div>
+          </div>
+          <div class="lg:col-span-2 space-y-2">
+            <p class="text-sm font-medium">Variants</p>
+            <template x-for="(v, i) in lab.variants" :key="i">
+              <div class="flex gap-2 items-center">
+                <span class="text-xs w-5 text-slate-500" x-text="i + 1"></span>
+                <select class="input" x-model="v.profile"><template x-for="p in profiles"><option :value="p" x-text="p"></option></template></select>
+                <select class="input" x-model="v.dither"><template x-for="d in dithers"><option :value="d" x-text="d"></option></template></select>
+                <button type="button" class="btn !px-2" @click="lab.variants.splice(i, 1)" x-show="lab.variants.length > 1" aria-label="Remove variant">✕</button>
+              </div>
+            </template>
+            <div class="flex gap-2">
+              <button type="button" class="btn" @click="lab.variants.push({profile: 'vivid', dither: 'stucki'})" x-show="lab.variants.length < 4">Add variant</button>
+              <button type="button" class="btn-primary ml-auto" @click="labRender()" :disabled="!!(busy.lab || !lab.file)" x-text="busy.lab ? 'Rendering…' : 'Render'"></button>
+            </div>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" x-show="lab.results.length">
+          <template x-for="(r, i) in lab.results" :key="i">
+            <div class="space-y-2">
+              <div class="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5 text-xs">
+                <button type="button" class="flex-1 rounded-md py-1" :class="!r.showComposed ? 'bg-white dark:bg-slate-700 shadow-sm' : ''" @click="r.showComposed = false">Dithered</button>
+                <button type="button" class="flex-1 rounded-md py-1" :class="r.showComposed ? 'bg-white dark:bg-slate-700 shadow-sm' : ''" @click="r.showComposed = true">Composition</button>
+              </div>
+              <button type="button" class="block w-full rounded-lg overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700 bg-slate-50 dark:bg-slate-800" :style="aspect(lab.frameSize)" @click="zoom(r.showComposed ? r.composed : r.dithered, variantLabel(r))">
+                <img :src="r.showComposed ? r.composed : r.dithered" class="h-full w-full object-contain" :alt="variantLabel(r)">
+              </button>
+              <p class="text-xs font-medium" x-text="variantLabel(r)"></p>
+              <div class="flex flex-wrap gap-1" x-show="r.decision">
+                <span class="badge-blue" x-text="r.decision && r.decision.profile"></span>
+                <span class="badge-violet" x-text="r.decision && r.decision.dither"></span>
+                <span class="badge" x-text="Math.round(r.elapsed_ms) + ' ms'"></span>
+              </div>
+              <ul class="text-[11px] text-slate-500 dark:text-slate-400 list-disc pl-4" x-show="r.decision && r.decision.reasons.length">
+                <template x-for="reason in (r.decision ? r.decision.reasons : [])"><li x-text="reason"></li></template>
+              </ul>
+            </div>
+          </template>
+        </div>
+        <div class="flex justify-end" x-show="lab.file">
+          <button type="button" class="btn" @click="uploadShow()" :disabled="!!(busy.render)">Display this image on the frame</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SETTINGS ============================== -->
+    <section x-show="tab === 'settings'" class="grid gap-6 lg:grid-cols-[13rem_1fr]">
+      <nav class="flex lg:flex-col gap-1 overflow-x-auto lg:sticky lg:top-20 lg:self-start -mx-4 px-4 lg:mx-0 lg:px-0">
+        <template x-for="s in settingsSections" :key="s.id">
+          <button type="button" @click="section = s.id; onSection()" class="whitespace-nowrap text-left px-3 py-2 rounded-lg text-sm"
+            :class="section === s.id ? 'bg-white dark:bg-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 font-medium' : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-900/60'"
+            x-text="s.label"></button>
+        </template>
+      </nav>
+
+      <div x-show="!draft" class="card text-sm text-slate-500">Loading settings…</div>
+      <div x-show="draft" class="space-y-6 min-w-0">
+
+        <!-- Frame & schedule -->
+        <template x-if="draft && section === 'frame'">
+          <div class="space-y-6">
+            <div class="card space-y-4">
+              <h3 class="card-title">Frame</h3>
+              <div class="grid sm:grid-cols-2 gap-4">
+                <label class="field"><span>Host or URL <small x-show="fromEnv('fraimic.host')" class="env">.env</small></span><input class="input" x-model="draft.fraimic.host" placeholder="fraimic.local"></label>
+                <label class="field"><span>Panel</span>
+                  <select class="input" x-model="draft.fraimic.panel"><option value="133">13.3" (1200×1600)</option><option value="315">31.5" (2560×1440)</option></select>
+                </label>
+                <label class="field"><span>Power mode</span>
+                  <select class="input" x-model="draft.fraimic.power_mode"><option value="continuous">Continuous (mains)</option><option value="deepsleep">Deep sleep (battery)</option></select>
+                </label>
+                <label class="field" x-show="draft.fraimic.power_mode === 'deepsleep'"><span>Check every (seconds)</span><input type="number" min="5" max="3600" class="input" x-model.number="draft.fraimic.poll_interval_s"></label>
+                <label class="field"><span>Orientation</span>
+                  <select class="input" x-model="draft.display.orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+                </label>
+                <label class="field" x-show="draft.display.orientation === 'landscape'"><span>Landscape rotation</span>
+                  <select class="input" x-model.number="draft.display.landscape_rotation"><option :value="90">90°</option><option :value="270">270° (if upside down)</option></select>
+                </label>
+                <label class="field"><span>Photo fit</span>
+                  <select class="input" x-model="draft.display.default_fit"><option value="smart_crop">Smart crop (faces)</option><option value="contain">Contain (whole photo)</option></select>
+                </label>
+                <label class="field"><span>Contain background</span>
+                  <select class="input" x-model="draft.display.contain_background"><option value="blur">Blurred</option><option value="black">Black</option><option value="white">White</option></select>
+                </label>
+                <label class="field"><span>Safe margin (px)</span><input type="number" min="0" max="250" class="input" x-model.number="draft.display.safe_margin_px"></label>
+              </div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['fraimic', 'display'])" :disabled="!!(busy.save || !dirty(['fraimic', 'display']))">Save</button></div>
+            </div>
+            <div class="card space-y-4">
+              <h3 class="card-title">Schedule</h3>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.scheduler.enabled"> Change the image automatically</label>
+              <div class="grid sm:grid-cols-2 gap-4" x-show="draft.scheduler.enabled">
+                <label class="field"><span>Every (hours)</span><input type="number" min="0.25" max="168" step="0.25" class="input" x-model.number="draft.scheduler.interval_hours"></label>
+                <label class="field"><span>Timezone</span><input class="input" x-model="draft.scheduler.timezone" placeholder="Europe/Paris"></label>
+                <label class="field"><span>Quiet hours from</span><input type="time" class="input" :value="draft.scheduler.quiet_hours_start || ''" @input="draft.scheduler.quiet_hours_start = $event.target.value || null"></label>
+                <label class="field"><span>Quiet hours until</span><input type="time" class="input" :value="draft.scheduler.quiet_hours_end || ''" @input="draft.scheduler.quiet_hours_end = $event.target.value || null"></label>
+                <label class="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" class="rounded" x-model="draft.scheduler.skip_if_pending"> Skip a refresh while the previous image still waits for a sleeping frame</label>
+              </div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['scheduler'])" :disabled="!!(busy.save || !dirty(['scheduler']))">Save</button></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Immich -->
+        <template x-if="draft && section === 'immich'">
+          <div class="space-y-6">
+            <div class="card space-y-4">
+              <div class="flex items-center">
+                <h3 class="card-title">Immich accounts</h3>
+                <button type="button" class="btn ml-auto" @click="accounts.push({name: '', url: '', api_key: '', test: null, isNew: true})">Add account</button>
+              </div>
+              <p class="text-sm text-slate-500" x-show="!accounts.length">No account yet.</p>
+              <template x-for="(a, i) in accounts" :key="i">
+                <div class="rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 p-4 space-y-3">
+                  <div class="grid sm:grid-cols-[10rem_1fr] gap-3">
+                    <label class="field"><span>Name</span><input class="input" x-model="a.name" placeholder="default" :readonly="!a.isNew" pattern="[A-Za-z0-9_-]{1,32}"></label>
+                    <label class="field"><span>URL</span><input class="input" x-model="a.url" placeholder="http://immich.local:2283"></label>
+                  </div>
+                  <label class="field"><span>API key</span><input class="input font-mono" type="password" autocomplete="off" x-model="a.api_key" :placeholder="a.isNew ? 'Immich API key' : 'Unchanged'"></label>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" class="btn" @click="testImmich(a)" :disabled="!!(a.testing)">Test connection</button>
+                    <span class="text-sm" x-show="a.test" :class="a.test && a.test.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                      x-text="a.test ? (a.test.ok ? '✓ Immich ' + a.test.version + ' · ' + a.test.people + ' people · ' + a.test.albums + ' albums' : a.test.error) : ''"></span>
+                    <button type="button" class="btn ml-auto !text-red-600" @click="accounts.splice(i, 1)">Remove</button>
+                  </div>
+                </div>
+              </template>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="saveAccounts()" :disabled="!!(busy.save)">Save accounts</button></div>
+            </div>
+
+            <div class="card space-y-4">
+              <h3 class="card-title">Selection</h3>
+              <div class="grid sm:grid-cols-2 gap-4">
+                <label class="field"><span>People match</span>
+                  <select class="input" x-model="draft.immich.match_mode"><option value="any">Any selected person</option><option value="all">All selected people</option></select>
+                </label>
+                <label class="field"><span>Do not repeat a photo within (days)</span><input type="number" min="0" max="3650" class="input" x-model.number="draft.immich.anti_repeat_days"></label>
+                <label class="field"><span>Burst cooldown (hours around a shown photo)</span><input type="number" min="0" max="168" step="0.5" class="input" x-model.number="draft.immich.burst_cooldown_hours"></label>
+                <label class="field"><span>Burst cooldown lasts (days)</span><input type="number" min="0" max="365" class="input" x-model.number="draft.immich.burst_cooldown_days"></label>
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.immich.favorites_only"> Favorites only</label>
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.immich.exclude_archived"> Skip archived photos</label>
+              </div>
+
+              <div class="pt-2">
+                <div class="flex items-center gap-2 mb-2">
+                  <p class="text-sm font-medium">Album</p>
+                  <span class="text-xs text-slate-500" x-text="draft.immich.album ? draft.immich.album : 'All photos'"></span>
+                  <button type="button" class="btn ml-auto !py-1 !text-xs" @click="loadAlbums()" :disabled="!!(busy.albums)" x-text="albums.length ? 'Reload' : 'Load albums'"></button>
+                </div>
+                <div class="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-6 gap-3 max-h-96 overflow-y-auto p-1" x-show="albums.length">
+                  <button type="button" @click="draft.immich.album = ''" class="text-left">
+                    <div class="aspect-square rounded-lg grid place-items-center bg-slate-100 dark:bg-slate-800 ring-2 text-xs text-slate-500" :class="!draft.immich.album ? 'ring-blue-600' : 'ring-transparent'">All photos</div>
+                  </button>
+                  <template x-for="al in albums" :key="al.account + al.id">
+                    <button type="button" @click="draft.immich.album = al.name" class="text-left">
+                      <div class="aspect-square rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="draft.immich.album === al.name ? 'ring-blue-600' : 'ring-transparent'">
+                        <img x-show="al.thumbnail_asset_id" :src="'./api/immich/thumbnail/' + encodeURIComponent(al.account) + '/asset/' + al.thumbnail_asset_id" class="h-full w-full object-cover" loading="lazy" alt="">
+                      </div>
+                      <p class="mt-1 text-xs truncate" x-text="al.name"></p>
+                      <p class="text-[11px] text-slate-500" x-text="al.asset_count + ' · ' + al.account"></p>
+                    </button>
+                  </template>
+                </div>
+              </div>
+
+              <div class="pt-2">
+                <div class="flex items-center gap-2 mb-1">
+                  <p class="text-sm font-medium">People</p>
+                  <button type="button" class="btn ml-auto !py-1 !text-xs" @click="loadPeople(true)" :disabled="!!(busy.people)" x-text="people.length ? 'Reload' : 'Load people'"></button>
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Filter: photos must show the selected people. Always: merged into every selection.</p>
+                <input class="input mb-2" type="search" placeholder="Filter names" x-model="peopleFilter" x-show="people.length > 12">
+                <div class="grid grid-cols-3 sm:grid-cols-5 xl:grid-cols-8 gap-3 max-h-[28rem] overflow-y-auto p-1" x-show="people.length">
+                  <template x-for="p in filteredPeople()" :key="p.name">
+                    <div class="text-center">
+                      <button type="button" @click="togglePerson('persons', p.name)" class="relative mx-auto block h-16 w-16 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="hasPerson('persons', p.name) ? 'ring-blue-600' : (hasPerson('always_include', p.name) ? 'ring-emerald-500' : 'ring-transparent')">
+                        <img :src="'./api/immich/thumbnail/' + encodeURIComponent(p.account) + '/person/' + p.id" class="h-full w-full object-cover" loading="lazy" alt="">
+                      </button>
+                      <p class="mt-1 text-xs truncate" x-text="p.name"></p>
+                      <div class="mt-1 flex justify-center gap-1">
+                        <button type="button" class="chip" :class="hasPerson('persons', p.name) ? 'chip-on' : ''" @click="togglePerson('persons', p.name)">Filter</button>
+                        <button type="button" class="chip" :class="hasPerson('always_include', p.name) ? 'chip-on-green' : ''" @click="togglePerson('always_include', p.name)">Always</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <p class="text-xs text-slate-500 mt-2" x-show="draft.immich.persons.length || draft.immich.always_include.length">
+                  <span x-show="draft.immich.persons.length">Filter: <span x-text="draft.immich.persons.join(', ')"></span>. </span>
+                  <span x-show="draft.immich.always_include.length">Always: <span x-text="draft.immich.always_include.join(', ')"></span>.</span>
+                </p>
+              </div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['immich'], ['accounts'])" :disabled="!!(busy.save || !dirty(['immich'], ['accounts']))">Save</button></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- TMDB -->
+        <template x-if="draft && section === 'tmdb'">
+          <div class="card space-y-4">
+            <h3 class="card-title">TMDB (movie and TV posters)</h3>
+            <label class="field"><span>API key or read access token <small x-show="fromEnv('tmdb.api_key')" class="env">.env</small></span>
+              <input class="input font-mono" type="password" autocomplete="off" x-model="draft.tmdb.api_key" placeholder="Not set">
+            </label>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn" @click="testTmdb()" :disabled="!!(busy.tmdbTest)">Test key</button>
+              <span class="text-sm" x-show="tmdbTest" :class="tmdbTest && tmdbTest.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="tmdbTest ? (tmdbTest.ok ? '✓ TMDB accepted the key' : tmdbTest.error) : ''"></span>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <label class="field"><span>Poster language and region</span><input class="input" x-model="draft.tmdb.language" placeholder="fr-FR"></label>
+              <label class="field"><span>Poster resolution</span>
+                <select class="input" x-model="draft.tmdb.image_size"><option value="auto">Auto</option><option value="w780">w780</option><option value="w1280">w1280</option><option value="original">Original</option></select>
+              </label>
+              <label class="field"><span>Poster stays for (minutes)</span><input type="number" min="1" max="1440" class="input" x-model.number="draft.tmdb.ephemeral_ttl_minutes"></label>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.tmdb.fallback_title_card"> Show a title card when no poster is found</label>
+            </div>
+            <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['tmdb'])" :disabled="!!(busy.save || !dirty(['tmdb']))">Save</button></div>
+          </div>
+        </template>
+
+        <!-- Family Mode -->
+        <template x-if="draft && section === 'family'">
+          <div class="card space-y-5">
+            <div class="flex items-center gap-2">
+              <h3 class="card-title">Family Mode</h3>
+              <label class="ml-auto flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.family.enabled"> Enabled</label>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Every Immich selection (Smart Mix, Random Discovery, searches) is filtered automatically over the whole library: no photo-by-photo curation. Photos in Immich's Locked Folder are never shown, with or without Family Mode. Home Assistant can switch Family Mode for a while with <code>POST /api/context</code> (<code>family_mode</code>).</p>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn !py-1 !text-xs" @click="loadPeople(true)" :disabled="!!(busy.people)" x-text="people.length ? 'Reload people' : 'Load people'"></button>
+              <button type="button" class="btn !py-1 !text-xs" @click="loadAlbums()" :disabled="!!(busy.albums)" x-text="albums.length ? 'Reload albums' : 'Load albums'"></button>
+            </div>
+
+            <div>
+              <p class="text-sm font-medium">Family members</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Only photos showing at least one selected person are used. None selected = the whole library.</p>
+              <label class="flex items-center gap-2 text-sm mb-2" x-show="draft.family.members.length"><input type="checkbox" class="rounded" x-model="draft.family.require_member"> Enforce the member filter</label>
+              <input class="input mb-2" type="search" placeholder="Filter names" x-model="peopleFilter" x-show="people.length > 12">
+              <div class="grid grid-cols-4 sm:grid-cols-6 xl:grid-cols-10 gap-3 max-h-80 overflow-y-auto p-1" x-show="people.length">
+                <template x-for="p in filteredPeople()" :key="'m' + p.name">
+                  <button type="button" @click="toggleIn('family', 'members', p.name)" class="text-center">
+                    <span class="relative mx-auto block h-14 w-14 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="hasIn('family', 'members', p.name) ? 'ring-blue-600' : 'ring-transparent'">
+                      <img :src="'./api/immich/thumbnail/' + encodeURIComponent(p.account) + '/person/' + p.id" class="h-full w-full object-cover" loading="lazy" alt="">
+                    </span>
+                    <span class="mt-1 block text-xs truncate" x-text="p.name"></span>
+                  </button>
+                </template>
+              </div>
+              <p class="text-xs text-slate-500 mt-2" x-show="draft.family.members.length" x-text="'Members: ' + draft.family.members.join(', ')"></p>
+            </div>
+
+            <div>
+              <p class="text-sm font-medium">Private people</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Photos showing any of them are never used while Family Mode is on.</p>
+              <div class="grid grid-cols-4 sm:grid-cols-6 xl:grid-cols-10 gap-3 max-h-80 overflow-y-auto p-1" x-show="people.length">
+                <template x-for="p in filteredPeople()" :key="'p' + p.name">
+                  <button type="button" @click="toggleIn('family', 'private_people', p.name)" class="text-center">
+                    <span class="relative mx-auto block h-14 w-14 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="hasIn('family', 'private_people', p.name) ? 'ring-red-600' : 'ring-transparent'">
+                      <img :src="'./api/immich/thumbnail/' + encodeURIComponent(p.account) + '/person/' + p.id" class="h-full w-full object-cover" loading="lazy" alt="">
+                    </span>
+                    <span class="mt-1 block text-xs truncate" x-text="p.name"></span>
+                  </button>
+                </template>
+              </div>
+              <p class="text-xs text-slate-500 mt-2" x-show="draft.family.private_people.length" x-text="'Private: ' + draft.family.private_people.join(', ')"></p>
+            </div>
+
+            <div>
+              <p class="text-sm font-medium">Private albums</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Every photo of these albums is excluded, even when it is also in other albums.</p>
+              <p class="text-xs text-slate-500" x-show="!albums.length">Load albums to pick some.</p>
+              <div class="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-6 gap-3 max-h-80 overflow-y-auto p-1" x-show="albums.length">
+                <template x-for="al in albums" :key="'a' + al.account + al.id">
+                  <button type="button" @click="toggleIn('family', 'private_albums', al.name)" class="text-left">
+                    <div class="aspect-square rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-800 ring-2" :class="hasIn('family', 'private_albums', al.name) ? 'ring-red-600' : 'ring-transparent'">
+                      <img x-show="al.thumbnail_asset_id" :src="'./api/immich/thumbnail/' + encodeURIComponent(al.account) + '/asset/' + al.thumbnail_asset_id" class="h-full w-full object-cover" loading="lazy" alt="">
+                    </div>
+                    <p class="mt-1 text-xs truncate" x-text="al.name"></p>
+                  </button>
+                </template>
+              </div>
+              <p class="text-xs text-slate-500 mt-2" x-show="draft.family.private_albums.length" x-text="'Private: ' + draft.family.private_albums.join(', ')"></p>
+            </div>
+            <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['family'])" :disabled="!!(busy.save || !dirty(['family']))">Save</button></div>
+          </div>
+        </template>
+
+        <!-- Smart Mix -->
+        <template x-if="draft && section === 'mix'">
+          <div class="card space-y-4">
+            <div class="flex items-center gap-2">
+              <h3 class="card-title">Smart Mix</h3>
+              <label class="ml-auto flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.smart_mix.enabled"> Enabled</label>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Scheduled refreshes pick an entry at random, in proportion to its weight. <code>{season}</code>, <code>{month_name}</code>… in parameters are filled in each time.</p>
+            <template x-for="(e, i) in mixRows" :key="i">
+              <div class="rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 p-4 space-y-3" :class="!e.enabled ? 'opacity-60' : ''">
+                <div class="flex flex-wrap items-center gap-3">
+                  <input class="input !w-48" x-model="e.label" placeholder="Label" maxlength="80">
+                  <select class="input !w-32" x-model="e.kind"><template x-for="k in mixKinds()"><option :value="k" x-text="k"></option></template></select>
+                  <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="e.enabled"> On</label>
+                  <span class="ml-auto text-xs text-slate-500 tabular-nums" x-show="mixChance(i) !== null" x-text="Math.round(mixChance(i) * 100) + '% of refreshes'"></span>
+                  <button type="button" class="btn !px-2" @click="mixRows.splice(i, 1)" aria-label="Remove entry">✕</button>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-slate-500 w-14">Weight</span>
+                  <input type="range" min="0.5" max="20" step="0.5" class="flex-1" x-model.number="e.weight">
+                  <input type="number" min="0.1" max="1000" step="0.1" class="input !w-20 !py-1" x-model.number="e.weight">
+                </div>
+                <details>
+                  <summary class="text-xs text-slate-500 cursor-pointer">Parameters (JSON body of the display endpoint)</summary>
+                  <textarea class="input font-mono text-xs mt-2" rows="4" x-model="e.paramsText" spellcheck="false"></textarea>
+                  <p class="text-xs text-red-600 dark:text-red-400" x-show="e.error" x-text="e.error"></p>
+                </details>
+              </div>
+            </template>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn" @click="mixRows.push({label: '', kind: 'immich', weight: 1, enabled: true, paramsText: '{\n  &quot;mode&quot;: &quot;random&quot;\n}', error: ''})">Add entry</button>
+              <div class="ml-auto flex items-center gap-3 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" class="rounded" x-model="draft.smart_mix.avoid_consecutive"> Avoid repeats</label>
+                <select class="input !w-auto !py-1" x-model="draft.smart_mix.hemisphere"><option value="north">Northern hemisphere</option><option value="south">Southern hemisphere</option></select>
+              </div>
+            </div>
+            <div class="rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 p-4 space-y-2">
+              <div class="flex items-center gap-3">
+                <span class="text-sm font-medium">Random Discovery</span>
+                <span class="ml-auto text-sm tabular-nums" x-text="Math.round(draft.smart_mix.discovery_share * 100) + '% of refreshes'"></span>
+              </div>
+              <input type="range" min="0" max="0.5" step="0.01" class="w-full" x-model.number="draft.smart_mix.discovery_share">
+              <p class="text-xs text-slate-500 dark:text-slate-400">That share of scheduled refreshes shows a random photo from the whole library (quality gate on: no screenshots, low-resolution shots, documents or blank frames; Family Mode and the Locked Folder rule still apply). If nothing suitable is found, a regular entry is used.</p>
+            </div>
+            <div class="flex justify-end"><button type="button" class="btn-primary" @click="saveMix()" :disabled="!!(busy.save)">Save</button></div>
+          </div>
+        </template>
+
+        <!-- Image processing -->
+        <template x-if="draft && section === 'image'">
+          <div class="space-y-6">
+            <div class="card space-y-4">
+              <h3 class="card-title">eInk rendering</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400"><b>auto</b> picks the profile and dithering per image (photo, poster, album cover, title card). Choose a value to force it everywhere.</p>
+              <div class="grid sm:grid-cols-2 gap-4">
+                <label class="field"><span>Profile</span>
+                  <select class="input" x-model="draft.eink.profile"><template x-for="p in profiles"><option :value="p" x-text="profileLabel(p)"></option></template></select>
+                </label>
+                <label class="field"><span>Dithering</span>
+                  <select class="input" x-model="draft.eink.dither"><template x-for="d in dithers"><option :value="d" x-text="ditherLabel(d)"></option></template></select>
+                </label>
+              </div>
+              <div class="grid sm:grid-cols-2 gap-x-6 gap-y-3" x-show="draft.eink.profile === 'official'">
+                <template x-for="k in ['brightness', 'contrast', 'saturation', 'sharpness']" :key="k">
+                  <label class="field"><span class="flex justify-between"><span x-text="k[0].toUpperCase() + k.slice(1)"></span><span class="tabular-nums" x-text="Number(draft.eink[k]).toFixed(2)"></span></span>
+                    <input type="range" min="0.5" max="2" step="0.05" x-model.number="draft.eink[k]">
+                  </label>
+                </template>
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.eink.edge_filters"> Official edge-enhance chain</label>
+              </div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['eink'])" :disabled="!!(busy.save || !dirty(['eink']))">Save</button></div>
+            </div>
+            <div class="card space-y-4">
+              <h3 class="card-title">Photo quality gate</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Skips screenshots, documents, blank and tiny photos before downloading them.</p>
+              <div class="grid sm:grid-cols-2 gap-4">
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" x-model="draft.quality.enabled"> Enabled</label>
+                <label class="field"><span>Minimum short side (px)</span><input type="number" min="0" max="4000" class="input" x-model.number="draft.quality.min_dimension"></label>
+              </div>
+              <div class="flex justify-end"><button type="button" class="btn-primary" @click="save(['quality'])" :disabled="!!(busy.save || !dirty(['quality']))">Save</button></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Security -->
+        <template x-if="draft && section === 'security'">
+          <div class="space-y-6">
+            <div class="card space-y-3">
+              <h3 class="card-title">Access</h3>
+              <p class="text-sm" x-text="authText()"></p>
+              <p class="text-xs text-slate-500" x-show="session && session.expires_at">Your session ends <span x-text="session && time(session.expires_at)"></span>.</p>
+            </div>
+            <div class="card space-y-4" x-show="session && session.mode !== 'open'">
+              <h3 class="card-title">API key</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Home Assistant, scripts and the frame use it as <code>X-API-Key</code>, <code>Authorization: Bearer</code> or <code>?api_key=</code>.</p>
+              <div class="flex flex-wrap gap-2">
+                <input class="input font-mono flex-1 min-w-0" :type="apiKey.shown ? 'text' : 'password'" :value="apiKey.value || '••••••••••••••••'" readonly x-ref="apikey">
+                <button type="button" class="btn" @click="revealKey()" x-text="apiKey.shown ? 'Hide' : 'Show'"></button>
+                <button type="button" class="btn" @click="copyKey()">Copy</button>
+              </div>
+              <p class="text-xs text-slate-500" x-show="apiKey.source === 'env'">Set by <code>APP_API_KEY</code> in .env: change it there and restart.</p>
+              <div x-show="apiKey.regenerable && session.mode === 'password' && session.via === 'session'" class="flex items-center gap-3">
+                <button type="button" class="btn !text-red-600" @click="regenerateKey()" :disabled="!!(busy.key)">Regenerate</button>
+                <span class="text-xs text-slate-500">Clients using the old key stop working immediately.</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+  </main>
+
+  <!-- Zoom modal -->
+  <div x-show="zoomed" x-transition.opacity class="fixed inset-0 z-50 bg-black/80 flex flex-col" @keydown.escape.window="zoomed = null" @click.self="zoomed = null">
+    <div class="flex items-center gap-3 p-3 text-white text-sm">
+      <span x-text="zoomed && zoomed.label"></span>
+      <label class="ml-auto flex items-center gap-2 text-xs"><input type="checkbox" x-model="zoomActual"> Actual pixels</label>
+      <button type="button" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20" @click="zoomed = null">Close</button>
+    </div>
+    <div class="flex-1 overflow-auto checker" @click.self="zoomed = null">
+      <img :src="zoomed && zoomed.src" alt="" class="pixelated mx-auto" :class="zoomActual ? 'max-w-none' : 'max-h-full max-w-full object-contain'">
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div class="fixed bottom-4 right-4 z-50 space-y-2 w-[calc(100%-2rem)] max-w-sm" aria-live="polite">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="rounded-xl px-4 py-3 text-sm shadow-lg ring-1" x-transition
+        :class="t.error ? 'bg-red-50 text-red-800 ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-900' : 'bg-white text-slate-800 ring-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700'"
+        x-text="t.text"></div>
+    </template>
+  </div>
+</div>
+
+<style type="text/tailwindcss">
+  @layer components {
+    .card { @apply rounded-2xl bg-white dark:bg-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 p-4 sm:p-5; }
+    .card-title { @apply font-semibold; }
+    .input { @apply block w-full rounded-lg border-0 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-700 focus:ring-2 focus:ring-blue-600 outline-none; }
+    .field { @apply block space-y-1.5 text-sm font-medium; }
+    .field > span { @apply block; }
+    .btn { @apply inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium ring-1 ring-inset ring-slate-300 dark:ring-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed; }
+    .btn-primary { @apply inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed; }
+    .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300; }
+    .badge-blue { @apply badge bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300; }
+    .badge-violet { @apply badge bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300; }
+    .badge-green { @apply bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300; }
+    .badge-amber { @apply bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300; }
+    .chip { @apply rounded-full px-2 py-0.5 text-[10px] ring-1 ring-slate-300 dark:ring-slate-700 text-slate-500; }
+    .chip-on { @apply bg-blue-600 text-white ring-blue-600; }
+    .chip-on-green { @apply bg-emerald-600 text-white ring-emerald-600; }
+    .env { @apply ml-1 rounded bg-slate-200 dark:bg-slate-700 px-1 text-[10px] font-normal text-slate-600 dark:text-slate-300; }
+  }
+</style>
+
+<script>
+  function app() {
+    // All URLs are relative ("./api/..."): the UI may live under a reverse-proxy sub-path.
+    var PROFILE_LABELS = { auto: "auto (per image)", official: "official (converter values)", photo: "photo (soft, natural)", soft: "soft (lifted shadows)", vivid: "vivid (rich colors)", natural: "natural (no enhancement)" };
+    var DITHER_LABELS = { auto: "auto (per image)", atkinson: "atkinson (official)", "atkinson-classic": "atkinson-classic", fs: "Floyd-Steinberg", "fs-serpentine": "Floyd-Steinberg serpentine", stucki: "Stucki (smooth gradients)", "blue-noise": "blue noise (fast)" };
+
+    return {
+      tabs: [{ id: "dashboard", label: "Dashboard" }, { id: "playground", label: "Playground" }, { id: "settings", label: "Settings" }],
+      settingsSections: [
+        { id: "frame", label: "Frame & schedule" }, { id: "immich", label: "Immich" }, { id: "tmdb", label: "TMDB" },
+        { id: "family", label: "Family Mode" }, { id: "mix", label: "Smart Mix" }, { id: "image", label: "Image processing" }, { id: "security", label: "Security" }
+      ],
+      profiles: ["auto", "official", "photo", "soft", "vivid", "natural"],
+      dithers: ["auto", "atkinson", "atkinson-classic", "fs", "fs-serpentine", "stucki", "blue-noise"],
+      tab: "dashboard", section: "frame", dark: document.documentElement.classList.contains("dark"),
+      session: null, status: null, activity: { renders: [], logs: [] }, logLevel: "INFO",
+      now: Date.now(), toasts: [], zoomed: null, zoomActual: false,
+      busy: {}, preview: null, previewStamp: 0,
+      tmdb: { query: "", mediaType: "multi", results: [], selected: null, searched: false, ttl: 180 },
+      music: { title: "", artist: "", album: "", style: "sleeve", showTitle: "", enrich: true },
+      card: { title: "", subtitle: "", caption: "", accent: "red", ttl: 60 },
+      lab: { file: null, template: "none", fit: "", variants: [{ profile: "auto", dither: "auto" }, { profile: "official", dither: "atkinson" }], results: [], frameSize: null },
+      config: null, sources: {}, draft: null, accounts: [], mixRows: [], mixView: null,
+      frameAsked: false, ambient: null, albums: [], people: [], peopleFilter: "", tmdbTest: null, apiKey: { value: "", shown: false, source: "none", regenerable: false },
+
+      // --- Lifecycle -------------------------------------------------------------------
+      async init() {
+        var hash = (location.hash || "").replace("#", "");
+        if (this.tabs.some(function (t) { return t.id === hash; })) this.tab = hash;
+        try { this.session = await this.api("api/auth/session"); } catch (e) { return; }
+        if (this.session.mode !== "open" && !this.session.authenticated) { location.replace("./login"); return; }
+        await this.loadStatus();
+        this.loadActivity();
+        if (this.tab === "settings") this.loadConfig();
+        var self = this;
+        setInterval(function () { self.now = Date.now(); }, 1000);
+        setInterval(function () { if (!document.hidden && self.tab === "dashboard") { self.loadStatus(); self.loadActivity(); } }, 10000);
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) self.loadStatus(); });
+      },
+      setTab(id) {
+        this.tab = id;
+        history.replaceState(null, "", "#" + id);
+        if (id === "settings" && !this.draft) this.loadConfig();
+        if (id === "dashboard") { this.loadStatus(); this.loadActivity(); }
+      },
+
+      // --- HTTP ------------------------------------------------------------------------
+      async api(path, options) {
+        options = options || {};
+        var headers = Object.assign({ "X-Requested-With": "SmartFrame" }, options.headers || {});
+        var init = { method: options.method || "GET", credentials: "same-origin", headers: headers };
+        if (options.form) { init.body = options.form; }
+        else if (options.body !== undefined) { headers["Content-Type"] = "application/json"; init.body = JSON.stringify(options.body); }
+        var response = await fetch("./" + path, init);
+        if (response.status === 401) { location.replace("./login"); throw new Error("Signed out"); }
+        var data = null;
+        var text = await response.text();
+        if (text) { try { data = JSON.parse(text); } catch (e) { data = text; } }
+        if (!response.ok) { throw new Error(this.errorText(data, response.status)); }
+        return data;
+      },
+      errorText(data, status) {
+        if (data && data.detail) {
+          if (typeof data.detail === "string") {
+            var extra = (data.errors || []).map(function (e) { return (e.loc || []).join(".") + ": " + e.msg; }).join("; ");
+            return extra ? data.detail + " (" + extra + ")" : data.detail;
+          }
+          if (Array.isArray(data.detail)) return data.detail.map(function (e) { return (e.loc || []).slice(1).join(".") + ": " + e.msg; }).join("; ");
+        }
+        return "Request failed (HTTP " + status + ")";
+      },
+      async run(flag, fn, okText) {
+        this.busy[flag] = true;
+        try { var result = await fn(); if (okText) this.toast(typeof okText === "function" ? okText(result) : okText); return result; }
+        catch (e) { this.toast(e.message || String(e), true); return null; }
+        finally { this.busy[flag] = false; }
+      },
+      toast(text, error) {
+        var id = Date.now() + Math.random();
+        this.toasts.push({ id: id, text: text, error: !!error });
+        var self = this;
+        setTimeout(function () { self.toasts = self.toasts.filter(function (t) { return t.id !== id; }); }, error ? 7000 : 3500);
+      },
+
+      // --- Dashboard -------------------------------------------------------------------
+      async loadStatus() {
+        try { this.status = await this.api("api/status"); } catch (e) { /* keep last */ }
+        this.loadAmbient();
+        var f = this.status && this.status.frame;
+        // The engine only polls a continuous-mode frame every 5 minutes: ask once right away.
+        if (f && f.configured && f.telemetry.online === null && !this.frameAsked) { this.frameAsked = true; this.checkFrame(false); }
+      },
+      async checkFrame(report) {
+        this.busy.frameCheck = true;
+        try { await this.api("api/fraimic/info?refresh=true"); if (report) this.toast("Frame reachable"); }
+        catch (e) { if (report) this.toast(e.message || String(e), true); }
+        finally { this.busy.frameCheck = false; }
+        try { this.status = await this.api("api/status"); } catch (e) { /* keep last */ }
+      },
+      async loadAmbient() { try { this.ambient = await this.api("api/context"); } catch (e) { /* optional */ } },
+      ambientFields() {
+        if (!this.ambient) return [];
+        var labels = { presence: "At home:", family_mode: "Family Mode forced", weather: "Weather:", season: "Season:", boost_tags: "Boost:", boost_people: "Favouring:" };
+        var ctx = this.ambient.context; var out = [];
+        Object.keys(labels).forEach(function (key) {
+          var f = ctx[key];
+          if (!f) return;
+          var text = f.values ? f.values.join(", ") : (typeof f.value === "boolean" ? (f.value ? "on" : "off") : f.value);
+          out.push({ key: key, label: labels[key], text: text, expires_at: f.expires_at });
+        });
+        return out;
+      },
+      async clearAmbient() {
+        var self = this;
+        var r = await this.run("ambient", function () { return self.api("api/context", { method: "DELETE" }); }, "Context cleared");
+        if (r) this.ambient = r;
+      },
+      async loadActivity() { try { this.activity = await this.api("api/activity?logs=120"); } catch (e) { /* optional */ } },
+      current() { return this.status && this.status.current_image; },
+      currentUrl(name) { var c = this.current(); return "./api/" + name + "?v=" + (c ? c.sha256.slice(0, 12) : "0"); },
+      previewUrl(name) { return "./api/" + name + "?t=" + this.previewStamp; },
+      aspect(size) {
+        size = size || (this.status && this.status.frame.frame_size) || [3, 4];
+        return "aspect-ratio:" + size[0] + "/" + size[1];
+      },
+      detailRows() {
+        var c = this.current(); if (!c || !c.details) return [];
+        var rows = [];
+        var keep = ["taken_at", "date", "location", "city", "country", "people", "year", "artist", "album", "account", "album_name", "media_type", "poster_language", "subtitle"];
+        Object.keys(c.details).forEach(function (k) {
+          if (keep.indexOf(k) === -1) return;
+          var v = c.details[k];
+          if (v === null || v === undefined || v === "") return;
+          rows.push([k.replace(/_/g, " "), Array.isArray(v) ? v.join(", ") : String(v)]);
+        });
+        return rows.slice(0, 8);
+      },
+      ephemeralActive() { return !!(this.status && this.status.ephemeral.active); },
+      info() { return this.status && this.status.frame.telemetry.info; },
+      battery() { var i = this.info(); return i && i.battery_percent !== null && i.battery_percent !== undefined ? i.battery_percent : null; },
+      batteryColor() { var b = this.battery(); return b === null ? "bg-slate-400" : b < 20 ? "bg-red-500" : b < 45 ? "bg-amber-500" : "bg-green-500"; },
+      signal(rssi) { return rssi >= -60 ? "good" : rssi >= -72 ? "fair" : "weak"; },
+      frameDot() {
+        if (!this.status) return "bg-slate-400";
+        var t = this.status.frame.telemetry;
+        if (!this.status.frame.configured) return "bg-slate-400";
+        if (t.online === true) return "bg-green-500";
+        if (this.status.frame.power_mode === "deepsleep") return "bg-sky-500";
+        return t.online === false ? "bg-red-500" : "bg-slate-400";
+      },
+      frameLabel() {
+        if (!this.status) return "";
+        var t = this.status.frame.telemetry;
+        if (!this.status.frame.configured) return "No frame configured";
+        if (t.online === true) return "Frame online";
+        if (this.status.frame.power_mode === "deepsleep") return t.online === false ? "Frame asleep" : "Frame not seen yet";
+        return t.online === false ? "Frame offline" : "Frame not contacted yet";
+      },
+      ruleLabel() {
+        var s = this.status.scheduler;
+        var rule = s.active_rule; if (!rule) return "";
+        var names = { pinned: "pinned rule", smart_mix: "Smart Mix", last: "last request" };
+        var parts = [names[rule.source] || rule.source, rule.kind];
+        if (s.last_run && s.last_run.entry_label) parts.push(s.last_run.entry_label);
+        return parts.filter(Boolean).join(" · ");
+      },
+      filteredLogs() {
+        var order = { DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, CRITICAL: 4 };
+        var min = order[this.logLevel];
+        return this.activity.logs.filter(function (l) { return order[l.level] >= min; });
+      },
+      levelColor(level) { return level === "ERROR" || level === "CRITICAL" ? "text-red-500" : level === "WARNING" ? "text-amber-500" : "text-sky-600 dark:text-sky-400"; },
+      async refreshNow() {
+        var r = await this.run("refresh", () => this.api("api/refresh", { method: "POST" }), function (r) { return "Showing " + (r.display.image.title || r.rule_kind); });
+        if (r) { this.loadStatus(); this.loadActivity(); }
+      },
+      async forcePush() {
+        var r = await this.run("push", () => this.api("api/fraimic/push", { method: "POST" }), function (r) { return r.status === "delivered" ? "Delivered to the frame" : "Queued: the frame did not answer"; });
+        if (r) this.loadStatus();
+      },
+      async wakeup() {
+        await this.run("wakeup", () => this.api("api/fraimic/wakeup", { method: "POST" }), "Checking the frame…");
+        this.loadStatus();
+      },
+      async clearEphemeral() {
+        var r = await this.run("ephemeral", () => this.api("api/queue/ephemeral", { method: "DELETE" }), function (r) { return r.reverted ? "Previous image restored" : "Nothing to cancel"; });
+        if (r) this.loadStatus();
+      },
+
+      // --- Playground ------------------------------------------------------------------
+      async tmdbSearch() {
+        var q = this.tmdb.query.trim(); if (!q) return;
+        var self = this;
+        var hits = await this.run("tmdbSearch", function () { return self.api("api/tmdb/search?q=" + encodeURIComponent(q) + "&media_type=" + self.tmdb.mediaType); });
+        this.tmdb.searched = true;
+        this.tmdb.results = hits || [];
+        this.tmdb.selected = this.tmdb.results[0] || null;
+      },
+      async tmdbShow(push) {
+        var hit = this.tmdb.selected; if (!hit) return;
+        var body = { query: hit.title, media_type: hit.media_type, push_to_fraimic: push, ephemeral: true, ttl_minutes: this.tmdb.ttl || null };
+        if (hit.year) body.year = hit.year;
+        await this.showResult(push, this.api("api/display/tmdb", { method: "POST", body: body }));
+      },
+      async musicShow(push) {
+        var m = this.music;
+        var body = { title: m.title || null, artist: m.artist, album: m.album || null, style: m.style, show_title: m.showTitle ? m.showTitle === "yes" : null, enrich_artwork: m.enrich, push_to_fraimic: push };
+        await this.showResult(push, this.api("api/display/now-playing", { method: "POST", body: body }));
+      },
+      async cardShow(push) {
+        var c = this.card;
+        var body = { title: c.title, subtitle: c.subtitle || null, caption: c.caption || null, accent: c.accent, ttl_minutes: c.ttl || null, push_to_fraimic: push };
+        await this.showResult(push, this.api("api/display/title-card", { method: "POST", body: body }));
+      },
+      async uploadShow() {
+        if (!this.lab.file) return;
+        var form = new FormData();
+        form.append("file", this.lab.file);
+        if (this.lab.fit) form.append("fit", this.lab.fit);
+        form.append("push_to_fraimic", "true");
+        await this.showResult(true, this.api("api/display/upload", { method: "POST", form: form }));
+      },
+      async showResult(push, promise) {
+        var self = this;
+        var result = await this.run("render", function () { return promise; });
+        if (!result) return;
+        if (push) {
+          var d = result.delivery;
+          this.toast(!d ? "Displayed" : d.status === "delivered" ? "Sent to the frame" : d.status === "queued" ? "Queued until the frame wakes up" : "Delivery: " + d.status);
+          this.loadStatus(); this.loadActivity();
+        } else {
+          this.preview = result.image;
+          this.previewStamp = Date.now();
+        }
+        return result;
+      },
+      async pushPreview() {
+        var r = await this.run("push", () => this.api("api/fraimic/push?from_preview=true", { method: "POST" }), function (r) { return r.status === "delivered" ? "Sent to the frame" : "Queued until the frame wakes up"; });
+        if (r) { this.preview = Object.assign({}, this.preview, { pushed: true }); this.loadStatus(); }
+      },
+      async labRender() {
+        var form = new FormData();
+        form.append("file", this.lab.file);
+        form.append("template", this.lab.template);
+        if (this.lab.fit && this.lab.template === "none") form.append("fit", this.lab.fit);
+        form.append("variants", JSON.stringify(this.lab.variants));
+        var self = this;
+        var result = await this.run("lab", function () { return self.api("api/playground/render", { method: "POST", form: form }); });
+        if (!result) return;
+        this.lab.frameSize = result.frame_size;
+        this.lab.results = result.variants.map(function (v) { return Object.assign({ showComposed: false }, v); });
+      },
+      variantLabel(r) { return r.requested.profile + " / " + r.requested.dither; },
+      zoom(src, label) { this.zoomed = { src: src, label: label }; },
+
+      // --- Settings --------------------------------------------------------------------
+      async loadConfig() {
+        var view = await this.run("config", () => this.api("api/config"));
+        if (!view) return;
+        this.applyConfig(view);
+        this.onSection();
+      },
+      applyConfig(view) {
+        this.config = view.config;
+        this.sources = view.sources;
+        this.draft = JSON.parse(JSON.stringify(view.config));
+        var accounts = view.config.immich.accounts || {};
+        this.accounts = Object.keys(accounts).map(function (name) { return { name: name, url: accounts[name].url, api_key: "", test: null, isNew: false }; });
+        this.mixRows = (view.config.smart_mix.entries || []).map(function (e) {
+          return { label: e.label || "", kind: e.kind, weight: e.weight, enabled: e.enabled, paramsText: JSON.stringify(e.params || {}, null, 2), error: "" };
+        });
+      },
+      onSection() {
+        if (this.section === "mix") this.loadMixView();
+        if (this.section === "security") this.loadKeyInfo();
+        if (this.section === "immich" && this.accounts.length && !this.people.length) this.loadPeople(false);
+        if (this.section === "family" && this.accounts.length) {
+          if (!this.people.length) this.loadPeople(false);
+          if (!this.albums.length) this.loadAlbums();
+        }
+      },
+      fromEnv(path) { return this.sources[path] === "env"; },
+      changes(sections, skip) {
+        var patch = {}; var self = this; skip = skip || [];
+        sections.forEach(function (section) {
+          var before = self.config[section], after = self.draft[section];
+          Object.keys(after).forEach(function (field) {
+            if (skip.indexOf(field) !== -1) return;
+            if (JSON.stringify(before[field]) !== JSON.stringify(after[field])) {
+              patch[section] = patch[section] || {};
+              patch[section][field] = after[field];
+            }
+          });
+        });
+        return patch;
+      },
+      dirty(sections, skip) { return this.config && Object.keys(this.changes(sections, skip)).length > 0; },
+      async save(sections, skip) {
+        var patch = this.changes(sections, skip);
+        if (!Object.keys(patch).length) return;
+        await this.putConfig(patch);
+      },
+      async putConfig(patch) {
+        var self = this;
+        // Keep unsaved edits of other sections across the reload.
+        var keep = JSON.parse(JSON.stringify(this.draft));
+        var view = await this.run("save", function () { return self.api("api/config", { method: "PUT", body: patch }); }, "Settings saved");
+        if (!view) return false;
+        var savedSections = Object.keys(patch);
+        this.applyConfig(view);
+        Object.keys(keep).forEach(function (s) { if (savedSections.indexOf(s) === -1) self.draft[s] = keep[s]; });
+        this.loadStatus();
+        return true;
+      },
+      async saveAccounts() {
+        var accounts = {}; var bad = null;
+        this.accounts.forEach(function (a) {
+          var name = (a.name || "").trim();
+          if (!/^[A-Za-z0-9_-]{1,32}$/.test(name)) { bad = "Account names use 1-32 letters, digits, - or _"; return; }
+          if (!a.url.trim()) { bad = "Give the URL of " + name; return; }
+          if (a.isNew && !a.api_key) { bad = "Give the API key of " + name; return; }
+          // An omitted key keeps the stored key of that account.
+          accounts[name] = a.api_key ? { url: a.url.trim(), api_key: a.api_key } : { url: a.url.trim() };
+        });
+        if (bad) { this.toast(bad, true); return; }
+        if (await this.putConfig({ immich: { accounts: accounts } })) { this.albums = []; this.people = []; }
+      },
+      async testImmich(a) {
+        a.testing = true; a.test = null;
+        try {
+          var body = { url: a.url || null, api_key: a.api_key || null };
+          if (!a.isNew) body.account = a.name;
+          a.test = await this.api("api/immich/test", { method: "POST", body: body });
+        } catch (e) { a.test = { ok: false, error: e.message }; }
+        finally { a.testing = false; }
+      },
+      async loadAlbums() {
+        var self = this;
+        var r = await this.run("albums", function () { return self.api("api/immich/albums"); });
+        if (!r) return;
+        this.albums = r.albums.sort(function (a, b) { return a.name.localeCompare(b.name); });
+        Object.keys(r.errors || {}).forEach(function (acc) { self.toast(acc + ": " + r.errors[acc], true); });
+      },
+      async loadPeople(refresh) {
+        var self = this;
+        var r = await this.run("people", function () { return self.api(refresh ? "api/immich/people/refresh" : "api/immich/people", refresh ? { method: "POST" } : undefined); });
+        if (!r) return;
+        var seen = {}; var list = [];
+        r.accounts.forEach(function (acc) {
+          if (acc.error) self.toast(acc.account + ": " + acc.error, true);
+          (acc.people || []).forEach(function (p) {
+            var key = p.name.toLowerCase();
+            if (seen[key]) return;
+            seen[key] = true;
+            list.push({ name: p.name, id: p.id, account: acc.account });
+          });
+        });
+        this.people = list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      },
+      filteredPeople() {
+        var q = this.peopleFilter.trim().toLowerCase();
+        return q ? this.people.filter(function (p) { return p.name.toLowerCase().indexOf(q) !== -1; }) : this.people;
+      },
+      hasIn(section, field, name) { return this.draft[section][field].some(function (n) { return n.toLowerCase() === name.toLowerCase(); }); },
+      toggleIn(section, field, name) {
+        var list = this.draft[section][field];
+        var i = list.findIndex(function (n) { return n.toLowerCase() === name.toLowerCase(); });
+        if (i === -1) list.push(name); else list.splice(i, 1);
+      },
+      hasPerson(field, name) { return this.draft.immich[field].some(function (n) { return n.toLowerCase() === name.toLowerCase(); }); },
+      togglePerson(field, name) {
+        var list = this.draft.immich[field];
+        var i = list.findIndex(function (n) { return n.toLowerCase() === name.toLowerCase(); });
+        if (i === -1) list.push(name); else list.splice(i, 1);
+      },
+      async testTmdb() {
+        this.busy.tmdbTest = true; this.tmdbTest = null;
+        try { this.tmdbTest = await this.api("api/tmdb/test", { method: "POST", body: { api_key: this.draft.tmdb.api_key || null } }); }
+        catch (e) { this.tmdbTest = { ok: false, error: e.message }; }
+        finally { this.busy.tmdbTest = false; }
+      },
+      async loadMixView() { try { this.mixView = await this.api("api/smart-mix"); } catch (e) { this.mixView = null; } },
+      mixKinds() {
+        var kinds = (this.mixView && this.mixView.supported_kinds) || ["immich", "tmdb"];
+        this.mixRows.forEach(function (r) { if (kinds.indexOf(r.kind) === -1) kinds = kinds.concat([r.kind]); });
+        return kinds;
+      },
+      mixChance(i) {
+        // Live probability of unsaved weights (enabled entries only).
+        var total = 0;
+        this.mixRows.forEach(function (r) { if (r.enabled && r.weight > 0) total += Number(r.weight); });
+        var row = this.mixRows[i];
+        if (!total || !row.enabled) return row.enabled ? null : 0;
+        return Number(row.weight) / total;
+      },
+      async saveMix() {
+        var entries = []; var failed = false;
+        this.mixRows.forEach(function (r) {
+          r.error = "";
+          var params;
+          try { params = JSON.parse(r.paramsText || "{}"); if (typeof params !== "object" || Array.isArray(params) || params === null) throw new Error("must be a JSON object"); }
+          catch (e) { r.error = "Invalid JSON: " + e.message; failed = true; return; }
+          entries.push({ kind: r.kind, params: params, weight: Number(r.weight) || 1, label: r.label.trim() || null, enabled: r.enabled });
+        });
+        if (failed) { this.toast("Fix the entry parameters first", true); return; }
+        var patch = this.changes(["smart_mix"], ["entries"]);
+        patch.smart_mix = Object.assign(patch.smart_mix || {}, { entries: entries });
+        if (await this.putConfig(patch)) this.loadMixView();
+      },
+      profileLabel(p) { return PROFILE_LABELS[p] || p; },
+      ditherLabel(d) { return DITHER_LABELS[d] || d; },
+      authText() {
+        if (!this.session) return "";
+        if (this.session.mode === "open") return "No authentication: anyone on the network can use this page and the API. Set ADMIN_PASSWORD (and optionally APP_API_KEY) in .env to lock it.";
+        if (this.session.mode === "key") return "API key mode: changes need the API key. You signed in with it.";
+        return "Admin login is on (ADMIN_PASSWORD). Home Assistant and the frame use the API key.";
+      },
+      async loadKeyInfo() {
+        if (!this.session || this.session.mode === "open") return;
+        try { var k = await this.api("api/auth/api-key"); this.apiKey = { value: "", shown: false, source: k.source, regenerable: k.regenerable, cached: k.api_key }; }
+        catch (e) { /* not allowed */ }
+      },
+      revealKey() {
+        if (this.apiKey.shown) { this.apiKey.shown = false; this.apiKey.value = ""; return; }
+        this.apiKey.value = this.apiKey.cached || ""; this.apiKey.shown = true;
+      },
+      async copyKey() {
+        var key = this.apiKey.cached; if (!key) return;
+        try { await navigator.clipboard.writeText(key); this.toast("API key copied"); }
+        catch (e) {
+          // Clipboard API needs HTTPS: fall back to selecting the revealed key.
+          this.revealKey(); if (!this.apiKey.shown) this.revealKey();
+          var input = this.$refs.apikey; this.$nextTick(function () { input.select(); });
+          this.toast("Press Ctrl+C / Cmd+C to copy");
+        }
+      },
+      async regenerateKey() {
+        if (!confirm("Generate a new API key? Home Assistant and other clients must be updated.")) return;
+        var self = this;
+        var r = await this.run("key", function () { return self.api("api/auth/api-key/regenerate", { method: "POST" }); }, "New API key generated");
+        if (r) { this.apiKey.cached = r.api_key; this.apiKey.value = r.api_key; this.apiKey.shown = true; }
+      },
+      async logout() {
+        try { await this.api("api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
+        location.replace("./login");
+      },
+      toggleTheme() {
+        this.dark = !this.dark;
+        document.documentElement.classList.toggle("dark", this.dark);
+        try { localStorage.setItem("sfe-theme", this.dark ? "dark" : "light"); } catch (e) {}
+      },
+
+      // --- Formatting ------------------------------------------------------------------
+      countdown(iso) {
+        var s = Math.max(0, Math.round((new Date(iso).getTime() - this.now) / 1000));
+        var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+        if (h) return h + "h " + String(m).padStart(2, "0") + "m";
+        return m + "m " + String(sec).padStart(2, "0") + "s";
+      },
+      ago(iso) {
+        var s = Math.round((this.now - new Date(iso).getTime()) / 1000);
+        if (s < 45) return "just now";
+        if (s < 3600) return Math.round(s / 60) + " min ago";
+        if (s < 86400) return Math.round(s / 3600) + " h ago";
+        return new Date(iso).toLocaleDateString();
+      },
+      clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); },
+      time(iso) { return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); }
+    };
+  }
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</body>
+</html>

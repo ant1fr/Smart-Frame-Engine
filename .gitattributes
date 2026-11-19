@@ -1,0 +1,12 @@
+# Normalize text files to LF in the repository and in Linux containers.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.bin binary
+*.ttf binary
+*.otf binary

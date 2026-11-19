@@ -35,3 +35,6 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# --- Local visual preview gallery (scripts/preview_gallery.py) ---------------
+/preview_gallery/

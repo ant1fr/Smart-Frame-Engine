@@ -1,0 +1,289 @@
+"""End-to-end rendering: image bytes -> composed preview -> dithered indices -> ``.bin``.
+
+Steps:
+
+1. Decode, validate, apply the EXIF orientation and flatten transparency onto white.
+2. Compose in *viewing* orientation (``frame_size`` honours portrait/landscape):
+   ``smart_crop`` (fill, face-aware) or ``contain`` (fit + blur/black/white background),
+   with the eInk enhancement applied to the picture only.
+3. Rotate the composition into the panel's native portrait buffer (``landscape_rotation``
+   degrees counter-clockwise), then dither it (Atkinson or Floyd-Steinberg, tuned metric).
+4. Pack the ``.bin``; the preview indices are rotated back to viewing orientation.
+
+Composition templates (``poster``, ``album``, ``title_card``; see
+:mod:`app.processor.templates`) replace step 2 via :func:`render_layout`; steps 3-4 are
+shared through :func:`finalize`.
+
+Rendering is CPU-bound and synchronous; call it through ``asyncio.to_thread``.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
+from functools import cached_property
+from typing import Literal
+
+import numpy as np
+import numpy.typing as npt
+from PIL import Image, ImageOps
+
+from app.core.config_models import EinkConfig, EinkProfile, FitMode, PanelSpec, RuntimeConfig
+from app.core.security import verify_image_bytes
+from app.processor.auto import (
+    ContentContext,
+    RenderDecision,
+    measure_content,
+    resolve,
+)
+from app.processor.dither import dither
+from app.processor.enhance import enhance
+from app.processor.fit import (
+    BackgroundStyle,
+    FocusRegion,
+    fit_inside,
+    make_background,
+    paste_centered,
+    smart_crop,
+)
+from app.processor.packing import encode_bin
+from app.processor.palette import PALETTE_RGB
+from app.processor.templates import Canvas, Layout, compose_layout
+
+Rotation = Literal[0, 90, 270]
+PREVIEW_JPEG_QUALITY = 90
+
+
+def decode_image(data: bytes) -> Image.Image:
+    """Decode untrusted image bytes into an upright RGB image.
+
+    Raises:
+        InvalidImageError: If the data is not a supported, valid image.
+    """
+    verify_image_bytes(data)
+    with Image.open(io.BytesIO(data)) as opened:
+        opened.load()
+        upright = ImageOps.exif_transpose(opened)
+    has_alpha = upright.mode in {"RGBA", "LA", "PA"} or (
+        upright.mode == "P" and "transparency" in upright.info
+    )
+    if has_alpha:
+        rgba = upright.convert("RGBA")
+        flattened = Image.new("RGB", rgba.size, (255, 255, 255))
+        flattened.paste(rgba, mask=rgba.getchannel("A"))
+        return flattened
+    return upright.convert("RGB")
+
+
+@dataclass(frozen=True, slots=True)
+class RenderOptions:
+    """Everything the renderer needs, resolved from the runtime configuration."""
+
+    panel: PanelSpec
+    frame_size: tuple[int, int]
+    rotation: Rotation
+    fit: FitMode
+    background: BackgroundStyle
+    eink: EinkConfig
+    safe_margin_px: int = 0
+    #: What the image is, for the automatic profile and dither choice (``eink.profile`` and
+    #: ``eink.dither`` set to ``auto``).
+    context: ContentContext = "photo"
+
+    def __post_init__(self) -> None:
+        native = (self.panel.width, self.panel.height)
+        expected = native if self.rotation == 0 else (native[1], native[0])
+        if self.frame_size != expected:
+            raise ValueError(
+                f"frame_size {self.frame_size} does not match panel {native} "
+                f"with rotation {self.rotation}"
+            )
+        if not 0 <= self.safe_margin_px < min(self.frame_size) // 4:
+            raise ValueError("safe_margin_px must be between 0 and a quarter of the short side")
+
+    @classmethod
+    def from_config(
+        cls,
+        config: RuntimeConfig,
+        *,
+        fit: FitMode | None = None,
+        eink_profile: EinkProfile | None = None,
+        context: ContentContext = "photo",
+    ) -> RenderOptions:
+        """Build options from the effective config.
+
+        Args:
+            config: Effective runtime configuration.
+            fit: Overrides the default fit mode.
+            eink_profile: Overrides ``eink.profile`` (e.g. a source forcing ``official``).
+            context: What the image is (drives the ``auto`` profile and dither choice).
+        """
+        rotation: Rotation = (
+            0 if config.display.orientation == "portrait" else config.display.landscape_rotation
+        )
+        return cls(
+            panel=config.fraimic.spec,
+            frame_size=config.frame_size,
+            rotation=rotation,
+            fit=fit or config.display.default_fit,
+            background=config.display.contain_background,
+            eink=config.eink.effective(eink_profile),
+            safe_margin_px=config.display.safe_margin_px,
+            context=context,
+        )
+
+
+@dataclass(frozen=True)
+class RenderResult:
+    """Output of :func:`render`."""
+
+    options: RenderOptions
+    composed: Image.Image = field(repr=False)
+    indices: npt.NDArray[np.uint8] = field(repr=False)
+    bin: bytes = field(repr=False)
+    decision: RenderDecision | None = None
+
+    @cached_property
+    def sha256(self) -> str:
+        """SHA-256 of the ``.bin`` payload (hex)."""
+        return hashlib.sha256(self.bin).hexdigest()
+
+    def preview_jpeg(self, quality: int = PREVIEW_JPEG_QUALITY) -> bytes:
+        """The enhanced composition (before dithering) as JPEG, in viewing orientation."""
+        buffer = io.BytesIO()
+        self.composed.save(buffer, format="JPEG", quality=quality, optimize=True)
+        return buffer.getvalue()
+
+    def dithered_png(self) -> bytes:
+        """Exact 6-color simulation of the panel output, in viewing orientation.
+
+        Written as a palette (indexed) PNG: pixel-identical to the RGB rendering, but an
+        order of magnitude faster to encode and smaller than an RGB PNG.
+        """
+        height, width = self.indices.shape
+        image = Image.frombytes("P", (width, height), np.ascontiguousarray(self.indices).tobytes())
+        image.putpalette([channel for color in PALETTE_RGB for channel in color])
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+
+def resolved_options(
+    image: Image.Image | None, options: RenderOptions
+) -> tuple[RenderOptions, RenderDecision]:
+    """``options`` with ``auto`` profile and dither resolved for ``image``.
+
+    Args:
+        image: The source picture (``None`` for a title card).
+        options: Render options, possibly with ``auto`` settings.
+    """
+    stats = measure_content(image) if image is not None else None
+    eink, decision = resolve(options.eink, options.context, stats)
+    return replace(options, eink=eink), decision
+
+
+def compose(
+    image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
+) -> Image.Image:
+    """Fit and enhance ``image`` into the frame, in viewing orientation.
+
+    The picture fills the frame minus ``safe_margin_px`` on every side; whatever is left
+    over (the margin, or the bars of the ``contain`` fit) is the background.
+    """
+    if options.eink.profile == "auto":
+        options, _ = resolved_options(image, options)
+    margin = options.safe_margin_px
+    area = (options.frame_size[0] - 2 * margin, options.frame_size[1] - 2 * margin)
+    if options.fit == "smart_crop":
+        picture = enhance(smart_crop(image, area, regions), options.eink)
+    else:
+        picture = enhance(fit_inside(image, area), options.eink)
+    if picture.size == options.frame_size:
+        return picture
+    background = make_background(image, options.frame_size, options.background)
+    if options.background == "blur":
+        background = enhance(background, options.eink, edge_filters=False)
+    return paste_centered(background, picture)
+
+
+def finalize(
+    composed: Image.Image, options: RenderOptions, decision: RenderDecision | None = None
+) -> RenderResult:
+    """Rotate, dither and encode a frame-sized composition (viewing orientation).
+
+    An unresolved ``auto`` dither is decided from the composition itself.
+
+    Raises:
+        ValueError: If ``composed`` does not have the frame size of ``options``.
+    """
+    if composed.size != options.frame_size:
+        raise ValueError(f"Composition is {composed.size}, expected {options.frame_size}")
+    if options.eink.dither == "auto" or options.eink.profile == "auto":
+        options, decision = resolved_options(composed, options)
+    composed = composed.convert("RGB")
+    quarter_turns = options.rotation // 90
+    # Rotate *before* dithering, like the official converter's ``--fit rotate``: error
+    # diffusion scans the panel's native portrait buffer, so the ``.bin`` is byte-identical.
+    native_rgb = np.ascontiguousarray(
+        np.rot90(np.asarray(composed, dtype=np.uint8), k=quarter_turns)
+    )
+    portrait = dither(native_rgb, options.eink.dither)
+    # The preview indices stay in viewing orientation (a lossless inverse rotation).
+    indices = np.ascontiguousarray(np.rot90(portrait, k=-quarter_turns))
+    return RenderResult(
+        options=options,
+        composed=composed,
+        indices=indices,
+        bin=encode_bin(portrait, options.panel),
+        decision=decision,
+    )
+
+
+def render(
+    image: Image.Image, options: RenderOptions, regions: Sequence[FocusRegion] = ()
+) -> RenderResult:
+    """Compose, dither and encode ``image`` for the configured panel.
+
+    ``auto`` profile and dither are resolved once, from the source picture.
+    """
+    source = image.convert("RGB")
+    resolved, decision = resolved_options(source, options)
+    return finalize(compose(source, resolved, regions), resolved, decision)
+
+
+def canvas_for(options: RenderOptions) -> Canvas:
+    """The template canvas matching ``options``."""
+    return Canvas(options.frame_size, options.eink, options.safe_margin_px)
+
+
+def render_layout(
+    image: Image.Image | None, layout: Layout, options: RenderOptions
+) -> RenderResult:
+    """Compose ``image`` with a template (never cropped), then dither and encode it.
+
+    ``auto`` profile and dither are resolved from the artwork and the layout's context.
+
+    Raises:
+        ValueError: If the layout needs artwork and ``image`` is ``None``.
+    """
+    options = replace(options, context=layout.name)
+    resolved, decision = resolved_options(image, options)
+    return finalize(compose_layout(image, layout, canvas_for(resolved)), resolved, decision)
+
+
+def render_layout_bytes(data: bytes | None, layout: Layout, options: RenderOptions) -> RenderResult:
+    """Decode untrusted bytes (if any) and :func:`render_layout` them.
+
+    Raises:
+        InvalidImageError: If ``data`` is not a supported image.
+    """
+    return render_layout(decode_image(data) if data is not None else None, layout, options)
+
+
+def render_bytes(
+    data: bytes, options: RenderOptions, regions: Sequence[FocusRegion] = ()
+) -> RenderResult:
+    """Decode untrusted bytes and :func:`render` them."""
+    return render(decode_image(data), options, regions)

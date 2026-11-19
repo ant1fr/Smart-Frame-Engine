@@ -33,17 +33,17 @@ Implement two providers initially:
   - `smart_crop`: Intelligent crop centered on face bounding boxes detected by Immich, fitted to target frame dimensions (`FRAME_WIDTH`, `FRAME_HEIGHT`, `ORIENTATION=landscape|portrait`).
   - `contain`: Full image display with adaptive padding or blurred background (ideal for movie/TV posters).
 - **eInk Optimization:** Configurable contrast, saturation, and sharpness adjustments.
-- **Fraimic Binary Encoding:** Implement the exact `.bin` binary format and Floyd-Steinberg dithering on the official Fraimic color palette, strictly following the reference documentation and official converter code located in `/fraimic-docs` (specifically `/fraimic-docs/fraimic_bin_converter`).
-- **Cache:** Save the latest processed image in `/data/cache/` in two formats: `current.jpg` (for the web UI and Home Assistant) and `current.bin` (for Fraimic).
+- **Fraimic Binary Encoding:** Implement the exact `.bin` binary format and error-diffusion dithering with the official tuned color metric: `eink.profile` / `eink.dither` default to `auto` (decided per image from its context and cheap statistics; explicit values always win), with `atkinson` kept byte-identical to the official converter, plus `atkinson-classic`, `fs`, `fs-serpentine`, `stucki` and `blue-noise` on the official Fraimic color palette, strictly following the reference documentation and official converter code located in `/fraimic-docs` (specifically `/fraimic-docs/fraimic_bin_converter`).
+- **Cache:** Save the latest processed image in `/data/cache/`: `current.jpg` (clean composition for the web UI and Home Assistant), `current_dithered.png` (exact 6-color preview), `current.bin` (for Fraimic) and `current.json` (metadata, written last); `base.*` keeps the last pushed non-ephemeral image (restored when an ephemeral one expires or is cancelled) and `preview.*` the latest render (`push_to_fraimic=false` only writes the preview). The deep-sleep upload queue lives in `/data/queue/` (`pending.bin` + `pending.json`); the last delivery is persisted in `/data/last_delivery.json`.
 
 ### 3. Fraimic Communication & Power Management (`clients/fraimic.py`)
 Support two configurable power modes via the UI and `.env` (`FRAIMIC_POWER_MODE`):
 - **`continuous` mode (Mains-powered / Always-On):**
-  - Frame is always reachable. Every newly generated image is pushed immediately (`POST /api/upload`).
+  - Frame is always reachable. Every newly generated image is pushed immediately (`POST /api/image` on the frame, raw `.bin` as `application/octet-stream`).
 - **`deepsleep` mode (Battery-powered / Power-saving):**
   - Frame turns off Wi-Fi during deep sleep and wakes up periodically or on button press.
   - When a new image is ready, queue it (`pending_upload = True`) without blocking the API.
-  - Run a lightweight background worker (and expose a wake-up webhook `POST /api/fraimic/wakeup` for Home Assistant) that checks frame availability (lightweight HTTP ping to `/api/status` or `/api/battery` every X seconds while an upload is pending) and automatically pushes `current.bin` as soon as the frame responds.
+  - Run a lightweight background worker (and expose a wake-up webhook `POST /api/fraimic/wakeup` for Home Assistant) that checks frame availability (lightweight HTTP ping to the frame's `GET /api/info` every X seconds while an upload is pending) and automatically pushes `current.bin` as soon as the frame responds.
 - **Autonomous Scheduler:** Configurable periodic auto-refresh (every X hours, with a quiet-hours night window) controllable from the UI.
 
 ### 4. Built-in Web UI (`GET /`)
@@ -53,18 +53,26 @@ Clean, responsive (mobile/desktop) English web interface allowing users to:
 - Configure all application settings without editing files manually (persisted to `/data/config.json`).
 
 ### 5. REST API (`GET /docs`)
-- `POST /api/display/immich`: Select and display an Immich photo (`persons`, `match_mode`, `album`, `push_to_fraimic`).
-- `POST /api/display/media`: Search and display an HD poster (`title`, `media_type`, `fallback_url`, `push_to_fraimic`).
+- `POST /api/display/immich`: Select and display an Immich photo (`mode` random|album|favorites|search, `persons` as plain names, `match_mode`, `always_include`, `album_name`/`album_id`, `clip_queries`, `accounts`, `fit`, `push_to_fraimic`, `ignore_history`, `skip_quality_gate`). Photos are vetted by a thumbnail-based quality gate (`quality` settings section) and a burst cooldown before the original is downloaded.
+- `POST /api/display/smart-search`: Contextual push (`query`/`queries`, `persons`, `on_this_day`, `taken_after`/`taken_before`, `ephemeral` default true, `hold_minutes`) without Immich IDs.
+- `GET /api/smart-mix`, `POST`/`DELETE /api/smart-mix/context`: Inspect the weighted Smart Mix playlist (`smart_mix` settings section; source-agnostic `kind` + `params` entries) and set/clear a temporary boost. Rule precedence for scheduled refreshes and `POST /api/refresh`: pinned `scheduler.source_rule` > Smart Mix > last non-ephemeral manual display. Direct pushes (`ephemeral`, `hold_minutes`) reset the timer without altering the playlist. `/api/smart-mix` is API-key protected for every method.
+- `GET /api/immich/albums`, `GET /api/immich/people`, `POST /api/immich/people/refresh`: Discovery across the configured Immich accounts (`immich.accounts`; keys are masked and `GET /api/immich/*` is API-key protected when `APP_API_KEY` is set).
+- `POST /api/display/tmdb`: Search and display an HD movie/TV poster with the no-crop `poster` template (`query`/`title`, `media_type` movie|tv|multi, `year`, `season`, `language`, `fallback_url`/`fallback_base64`, `push_to_fraimic`, `ephemeral` default true, `ttl_minutes`, `hold_minutes`). Regional poster ranking (`tmdb.language`), fallbacks: HA picture -> `/data/assets/tmdb_fallback.png` -> title card. `POST /api/display/media` is a deprecated alias. `tmdb` is a replayable runner kind.
+- `POST /api/display/now-playing`: Album cover with the `album` template (`title`, `artist`, `album`, `artwork_url`/`artwork_base64`, `enrich_artwork` via Deezer then MusicBrainz/Cover Art Archive, `style` sleeve|vinyl, `duration_seconds`/`position_seconds`/`ttl_seconds`, `hold_minutes`, `push_to_fraimic`). Ephemeral by default; the same track is deduplicated (expiry extended only).
+- `GET /api/queue` & `DELETE /api/queue/ephemeral`: Inspect the upload queue and cancel the ephemeral image. Ephemeral images carry `expires_at`; on expiry/cancel the last pushed non-ephemeral image (`/data/cache/base.*`) is restored and re-sent only if the frame may not show it.
+- `GET /api/preview.jpg` & `GET /api/preview_dithered.png`: Latest render; `push_to_fraimic=false` only updates the preview (`POST /api/fraimic/push?from_preview=true` sends it).
 - `POST /api/fraimic/wakeup`: Webhook signaling frame wake-up to flush any queued upload immediately.
 - `POST /api/refresh`: Re-run the currently active source rule.
 - `GET /api/current.jpg` & `GET /api/current.bin`: Serve generated files (compatible with Home Assistant *Generic Camera*).
 - `GET /api/config` & `PUT /api/config`: Read and update runtime configuration.
+- `GET /api/health`: Public liveness probe and compatibility handshake (`version`, `api_version`, `min_api_version`, `auth`, `capabilities`); never requires credentials. See `docs/API_CONTRACT.md`.
 - `GET /api/status`: Overall system status, queue state, and active image metadata.
 
 ## Development Constraints
 - All code, comments, docstrings, UI text, commit messages, and documentation must be written in **English**.
 - Produce clean, strictly typed (`typing`), modular, well-documented code.
 - Always provide complete file implementations (never use `# TODO` or `...` placeholders).
+- **API contract:** any PR that changes an `/api/*` endpoint, an exposed Pydantic model, the `capabilities` list (`app/core/contract.py`), `API_VERSION`/`MIN_API_VERSION` or the Zeroconf TXT records must update `docs/API_CONTRACT.md` (including its `## Contract Changelog`) and regenerate `docs/openapi.json` with `python scripts/export_openapi.py`. `tests/test_openapi_contract.py` fails on drift. Capability flags are only ever added within a contract version; breaking changes bump `api_version` (policy in the contract).
 - Include a ready-to-use Home Assistant integration guide (`Generic Camera` + YAML automation examples for presence detection and TV media playback).
 
 ## Git & Gitflow Workflow
@@ -83,10 +91,11 @@ Clean, responsive (mobile/desktop) English web interface allowing users to:
 
 ## Security, Privacy & Reverse Proxy Compatibility
 - **Zero Hardcoded Secrets & Clean Logs:** Never commit API keys, personal local IPs, or passwords. Use `.env` (documented in `.env.example`) and `/data/config.json` (gitignored). Mask tokens/API keys in logs.
-- **Adaptive Authentication (`APP_API_KEY`):**
-  - If `APP_API_KEY` is empty (default for pure LAN usage), API and UI require no authentication.
-  - If `APP_API_KEY` is set, all `POST`/`PUT`/`DELETE` routes and `/api/config` require the `X-API-Key` header (or `?api_key=` query parameter).
-  - The UI (`index.html`) must detect `401` responses and display a modal prompting for the API key, storing it in `localStorage`.
+- **Adaptive Authentication (`APP_API_KEY`, `ADMIN_PASSWORD`):**
+  - If both are empty (default for pure LAN usage), API and UI require no authentication.
+  - If only `APP_API_KEY` is set, all `POST`/`PUT`/`DELETE` routes and `/api/config` require the key (`X-API-Key` header, `Authorization: Bearer` or `?api_key=`).
+  - If `ADMIN_PASSWORD` is set, the web UI has an `admin` login (signed HttpOnly session cookie, CSRF header `X-Requested-With: SmartFrame` on cookie mutations) and every route except `/api/health`, the login and the public images requires a session or the API key; an API key is generated into `/data/secrets.json` when `APP_API_KEY` is empty and can be viewed/regenerated by the admin.
+  - The UI (`index.html`) redirects to `./login` on `401`.
   - Support `PUBLIC_IMAGE_ENDPOINTS=true` (default `true`) so `/api/current.jpg` and `/api/current.bin` remain readable without headers (required for Home Assistant *Generic Camera* and Fraimic pull), while accepting `?api_key=` when set to `false`.
 - **SSRF & Upload Protection:** Validate external URLs (`http`/`https` only, block unauthorized private/local IP ranges if configured), enforce a 20 MB file size limit, and verify real image magic bytes via Pillow.
 - **Reverse Proxy Compatibility (Nginx Proxy Manager, Traefik, Caddy, Cloudflare):**

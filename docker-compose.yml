@@ -1,0 +1,38 @@
+# Smart Frame Engine - production setup: pulls the published image, nothing is built locally.
+#
+#   cp .env.example .env     # then edit it
+#   docker compose up -d
+#
+# Deployment settings (in .env, or as stack variables in Portainer / Synology Container Manager):
+#   HOST_PORT  port published on the host                       (default 8080)
+#   DATA_DIR   where /data lives: a host folder such as /volume1/docker/smart-frame (bind
+#              mount, easy to back up) or a Docker volume name       (default smart-frame-data)
+#   PUID/PGID  owner of a bind-mounted DATA_DIR (`id -u` / `id -g`)  (default 1000)
+#
+# To build from source instead, see docker-compose.build.yml.
+services:
+  smart-frame-engine:
+    image: ghcr.io/ant1fr/smart-frame-engine:latest
+    container_name: smart-frame-engine
+    restart: unless-stopped
+    # Run as the owner of the DATA_DIR folder (defaults to 1000:1000, the image's user).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+      # Portainer (repository stacks) writes its stack variables to stack.env.
+      - path: stack.env
+        required: false
+    environment:
+      # DATA_DIR in .env is the *host* location of the volume below. Inside the container the
+      # data folder is always /data, so it must not leak through env_file.
+      DATA_DIR: /data
+    # mDNS (ZEROCONF_ENABLED) needs host networking: replace `ports:` with
+    # `network_mode: host` and set PORT in .env if 8080 is taken.
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      - ${DATA_DIR:-smart-frame-data}:/data
+
+volumes:
+  smart-frame-data:
