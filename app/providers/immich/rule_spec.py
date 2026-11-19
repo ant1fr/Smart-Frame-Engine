@@ -199,4 +199,5 @@ def immich_rule_spec() -> RuleKindSpec:
             SummaryPart(template="On this day", field="on_this_day"),
             SummaryPart(template="Whole library", field="whole_library"),
         ],
+        summary_fallback="Any photo",
     )

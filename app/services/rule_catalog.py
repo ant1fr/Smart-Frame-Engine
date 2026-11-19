@@ -142,7 +142,11 @@ class RuleKindSpec(BaseModel):
     fields: list[FieldSpec]
     presets: list[Preset]
     summary: list[SummaryPart] = Field(
-        description="Recipe of the one-line description; the kind label is used when it is empty"
+        description="Recipe of the one-line description of a rule, parts joined with ' · '"
+    )
+    summary_fallback: str | None = Field(
+        default=None,
+        description="Description of a rule none of the summary parts applies to (default: label)",
     )
 
     def field_keys(self) -> set[str]:

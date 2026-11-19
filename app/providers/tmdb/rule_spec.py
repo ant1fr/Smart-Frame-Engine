@@ -90,7 +90,8 @@ def tmdb_rule_spec() -> RuleKindSpec:
         ],
         summary=[
             SummaryPart(template="{value}", field="query"),
-            SummaryPart(template="({value})", field="year"),
-            SummaryPart(template="season {value}", field="season"),
+            SummaryPart(template="{value}", field="year"),
+            SummaryPart(template="Season {value}", field="season"),
         ],
+        summary_fallback="Poster (no title yet)",
     )

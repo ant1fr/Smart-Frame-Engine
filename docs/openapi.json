@@ -3251,12 +3251,24 @@
             "title": "Service"
           },
           "summary": {
-            "description": "Recipe of the one-line description; the kind label is used when it is empty",
+            "description": "Recipe of the one-line description of a rule, parts joined with ' · '",
             "items": {
               "$ref": "#/components/schemas/SummaryPart"
             },
             "title": "Summary",
             "type": "array"
+          },
+          "summary_fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Description of a rule none of the summary parts applies to (default: label)",
+            "title": "Summary Fallback"
           }
         },
         "required": [
