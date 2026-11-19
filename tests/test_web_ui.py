@@ -355,3 +355,11 @@ def test_immich_connection_test(make_client: ClientFactory) -> None:
     }
     invalid = client.post("/api/immich/test", json={"url": "ftp://x", "api_key": "k"}).json()
     assert invalid["ok"] is False
+
+
+def test_smart_mix_editor_is_driven_by_the_kinds_endpoint() -> None:
+    html = page("index.html")
+    assert 'this.api("api/smart-mix/kinds")' in html
+    # The old raw-JSON textarea per entry is gone; JSON stays available as an opt-in escape hatch.
+    assert "paramsText" not in html
+    assert "Edit raw JSON" in html

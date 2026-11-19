@@ -39,4 +39,7 @@ pytest
 
 Providers live in `app/providers/`. Implement the provider base class, return an `ImageAsset`,
 register it where the existing providers are wired in `app/main.py`, and add tests next to the
-existing provider tests. Open a *Feature request* first if you want to discuss the design.
+existing provider tests. To make the source usable in Smart Mix, describe the rules it accepts in
+`app/providers/<name>/rule_spec.py` (see `immich_rule_spec()`) and add it to `default_catalog()`
+in `app/services/rule_catalog.py`: the Smart Mix editor builds its form from that descriptor, and
+`tests/test_rule_catalog.py` checks it against your request model. Open a *Feature request* first if you want to discuss the design.

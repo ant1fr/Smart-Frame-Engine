@@ -39,6 +39,7 @@ CAPABILITIES: Final[dict[str, tuple[str, str]]] = {
     "random_discovery": ("PUT", "/api/config"),
     "smart_mix": ("GET", "/api/smart-mix"),
     "smart_mix_context": ("POST", "/api/smart-mix/context"),
+    "smart_mix_kinds": ("GET", "/api/smart-mix/kinds"),
     "title_card": ("POST", "/api/display/title-card"),
     "upload_image": ("POST", "/api/display/upload"),
 }
