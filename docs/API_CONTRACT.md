@@ -17,7 +17,7 @@ every authentication mode), so it works before any key or password is configured
 ```json
 {
   "status": "ok",
-  "version": "1.0.0rc3",
+  "version": "1.0.0",
   "api_version": 1,
   "min_api_version": 1,
   "instance_id": "3f2b8c1e-5d0a-4c7e-9b61-0a1d2e3f4a5b",
@@ -222,7 +222,7 @@ changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
 
 ## Contract Changelog
 
-### 1.2 (engine 1.0.0rc3), additive
+### 1.2 (engine 1.0.0), additive
 
 - `GET /api/status` gains `release`: the engine version spelled like the git tag and the Docker
   image tag (SemVer, `1.0.0-rc.2`), with `+<build>` appended for images built outside a release
