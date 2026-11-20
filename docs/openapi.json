@@ -4498,7 +4498,7 @@
   "info": {
     "description": "\nFetch images from modular sources (Immich, TMDB posters, URLs), optimize them for a\ncolor eInk panel and push them to a Fraimic frame.\n\n**Authentication:** with `ADMIN_PASSWORD` set, every route except `/api/health`, the login\nand the public images needs a web UI session or the API key. With only `APP_API_KEY`, every\n`POST`/`PUT`/`DELETE` route and `/api/config` need the key. Send it as `X-API-Key`,\n`Authorization: Bearer <key>` or `?api_key=`; use **Authorize** above.\n",
     "title": "Smart Frame Engine",
-    "version": "1.0.0rc2"
+    "version": "1.0.0rc3"
   },
   "openapi": "3.1.0",
   "paths": {
