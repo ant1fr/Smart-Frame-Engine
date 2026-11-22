@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smart-frame-engine"
-version = "1.0.0"
+version = "1.1.0"
 description = "Fetch photos and posters from modular sources, optimize them for color eInk, and push them to a Fraimic frame."
 readme = "README.md"
 license = "MIT"
