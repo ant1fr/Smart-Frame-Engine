@@ -386,19 +386,11 @@ class DisplayConfig(_Section):
     )
 
 
-#: Values of the ``photo`` profile, tuned on a real Spectra 6 panel with indoor photos: the
-#: official edge-enhance/sharpen chain and +20% saturation/contrast make photos look
-#: outlined, over-saturated and grainy. Dithering stays as configured.
-PHOTO_PROFILE: Final[dict[str, float | bool]] = {
-    "brightness": 1.0,
-    "contrast": 1.0,
-    "saturation": 0.85,
-    "sharpness": 0.8,
-    "edge_filters": False,
-}
-
-#: ``soft``, ``vivid`` and ``natural`` do their tone and chroma work in
+#: ``photo``, ``soft``, ``vivid`` and ``natural`` do their tone and chroma work in
 #: :func:`app.processor.enhance.enhance` (gamut-safe curves), so the plain factors stay neutral.
+#: The official edge-enhance/sharpen chain and +20% saturation/contrast make photos look
+#: outlined and grainy, while the old desaturating ``photo`` preset (saturation 0.85) left
+#: them washed out once dithered to six colors. Dithering stays as configured.
 CURVE_PROFILE: Final[dict[str, float | bool]] = {
     "brightness": 1.0,
     "contrast": 1.0,
@@ -408,7 +400,7 @@ CURVE_PROFILE: Final[dict[str, float | bool]] = {
 }
 
 PROFILE_VALUES: Final[dict[str, dict[str, float | bool]]] = {
-    "photo": PHOTO_PROFILE,
+    "photo": CURVE_PROFILE,
     "soft": CURVE_PROFILE,
     "vivid": CURVE_PROFILE,
     "natural": CURVE_PROFILE,
@@ -422,8 +414,8 @@ class EinkConfig(_Section):
         default="auto",
         description="auto = chosen per image from its content (photo, poster, album cover, "
         "title card) and cheap statistics; official = the values below (defaults = official "
-        "converter); photo = softer preset for photographs; soft / vivid = gamut-safe tone and "
-        "chroma curves (lifted shadows / richer colors); natural = no enhancement. "
+        "converter); photo / soft / vivid = gamut-safe tone and chroma curves (balanced "
+        "photographs / lifted shadows / richer colors); natural = no enhancement. "
         "Everything but official overrides brightness, contrast, saturation, sharpness and "
         "edge_filters",
     )

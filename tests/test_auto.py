@@ -76,8 +76,10 @@ def test_measure_content_handles_tiny_images() -> None:
         ("poster", {"luma_std": 40.0, "highlight_share": 0.5}, "vivid"),  # flat, muted
         ("poster", {"dominant_colors": 13}, "official"),  # flat-color graphic poster
         ("poster", {"flat_share": 60.0, "luma_std": 40.0}, "vivid"),  # dark backdrop only
-        ("photo", {"luma_mean": 60.0}, "soft"),  # dark
-        ("photo", {"luma_std": 30.0}, "soft"),  # low contrast
+        ("photo", {"luma_mean": 50.0}, "soft"),  # dark
+        ("photo", {"luma_std": 25.0}, "soft"),  # low contrast
+        ("photo", {"luma_mean": 77.0}, "photo"),  # dim indoor shot keeps its contrast
+        ("photo", {"luma_std": 34.0}, "photo"),  # moderate contrast
         ("photo", {"luma_mean": 178.0, "luma_std": 34.0, "black_share": 0.0}, "vivid"),  # snow
         ("photo", {"luma_mean": 170.0, "black_share": 6.0}, "photo"),  # bright but has blacks
         ("photo", {}, "photo"),
@@ -106,7 +108,7 @@ def test_a_bright_snow_photo_keeps_its_whites() -> None:
     snow = stats(luma_mean=178.0, luma_std=34.0, black_share=0.0, highlight_share=0.0)
     profile, reason = decide_profile("photo", snow)
     assert profile == "vivid" and "bright photo" in reason
-    assert decide_profile("photo", stats(luma_mean=60.0, black_share=0.0))[0] == "soft"  # dark wins
+    assert decide_profile("photo", stats(luma_mean=50.0, black_share=0.0))[0] == "soft"  # dark wins
 
 
 # --- dither ----------------------------------------------------------------------------------

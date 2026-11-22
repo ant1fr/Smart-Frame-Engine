@@ -6,7 +6,7 @@ step is skipped, making the output identical to the official converter's ``proce
 Enhancement must run on the picture only (before letterbox padding) so flat bars do
 not skew the contrast pivot and filters do not bleed across the picture/bar seam.
 
-The ``soft`` and ``vivid`` profiles (adapted from the MIT-licensed Stillroom converter by
+The ``photo``, ``soft`` and ``vivid`` profiles (adapted from the MIT-licensed Stillroom converter by
 WillCroPoint, itself based on the official Fraimic converter) work on luminance in floating
 point with endpoint-preserving curves, and compress chroma toward that luminance *only* when
 it would leave the RGB gamut - one scale for all three channels, so hue is preserved instead of
@@ -26,7 +26,8 @@ from app.core.config_models import EinkConfig
 _LUMA: Final = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 #: profile -> (shadow lift, midtone S-curve strength, highlight shoulder, chroma gain)
 CURVES: Final[dict[str, tuple[float, float, float, float]]] = {
-    "soft": (0.12, -0.12, 0.35, 0.98),  # lifted shadows, restrained highlights
+    "photo": (0.06, 0.25, 0.20, 1.07),  # balanced: gentle contrast and a little extra color
+    "soft": (0.10, 0.0, 0.30, 1.05),  # lifted shadows, restrained highlights, still colorful
     "vivid": (0.10, 0.50, 0.15, 1.18),  # stronger contrast, richer color, gradual roll-off
 }
 

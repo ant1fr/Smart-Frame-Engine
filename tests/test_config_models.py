@@ -229,7 +229,7 @@ def test_official_profile_leaves_values_untouched_and_floyd_steinberg_is_an_alia
     assert config.effective() is config
 
 
-@pytest.mark.parametrize("profile", ["soft", "vivid", "natural"])
+@pytest.mark.parametrize("profile", ["photo", "soft", "vivid", "natural"])
 def test_curve_profiles_neutralize_the_plain_factors(profile: str) -> None:
     from app.core.config_models import EinkConfig
 
@@ -240,14 +240,14 @@ def test_curve_profiles_neutralize_the_plain_factors(profile: str) -> None:
 
 
 def test_photo_profile_overrides_the_five_tuning_fields_but_keeps_dithering() -> None:
-    from app.core.config_models import PHOTO_PROFILE, EinkConfig
+    from app.core.config_models import CURVE_PROFILE, EinkConfig
 
     config = EinkConfig(profile="photo", contrast=1.5, dither="stucki")
     effective = config.effective()
-    for name, value in PHOTO_PROFILE.items():
+    for name, value in CURVE_PROFILE.items():
         assert getattr(effective, name) == value
     assert effective.dither == "stucki"
-    assert effective.edge_filters is False and effective.saturation == 0.85
+    assert effective.edge_filters is False and effective.saturation == 1.0
     assert config.contrast == 1.5  # the stored configuration is not modified
 
 
@@ -257,7 +257,7 @@ def test_effective_profile_can_be_forced_per_source() -> None:
     photo = EinkConfig(profile="photo")
     official = photo.effective("official")
     assert official.profile == "official" and official.saturation == 1.2
-    assert EinkConfig().effective("photo").saturation == 0.85
+    assert EinkConfig().effective("photo").saturation == 1.0
 
 
 def test_source_kind_is_an_open_identifier() -> None:
