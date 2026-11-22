@@ -12,6 +12,10 @@ Algorithms (all quantize onto the six panel colors with the official tuned color
 * ``blue-noise`` - ordered dithering against a tileable blue-noise threshold map: no error
   diffusion, so it runs in milliseconds on any hardware, with a film-grain look.
 
+Every algorithm can run in *monochrome* mode (``monochrome=True``): only black and white
+are candidates. The tuned metric would otherwise build mid-greys out of yellow, green and
+red dots, which is exactly what makes black-and-white photos look dirty and washed out.
+
 Speed. Error diffusion is sequential by nature, but a *causal* kernel (error only goes
 forward: right, and below) only depends on pixels with a strictly smaller wavefront key
 ``t = x + a*y`` (``a`` = :attr:`DitherKernel.skew`; 2 for FS/Atkinson, 3 for Stucki), so all
@@ -184,7 +188,9 @@ def _check(rgb: npt.NDArray[np.uint8]) -> tuple[int, int]:
 
 
 # --- NumPy wavefront (exact, no extra dependency) --------------------------------------------
-def _wavefront(rgb: npt.NDArray[np.uint8], kernel: DitherKernel) -> npt.NDArray[np.uint8]:
+def _wavefront(
+    rgb: npt.NDArray[np.uint8], kernel: DitherKernel, colors: int = 6
+) -> npt.NDArray[np.uint8]:
     height, width = _check(rgb)
     skew = kernel.skew
 
@@ -204,7 +210,7 @@ def _wavefront(rgb: npt.NDArray[np.uint8], kernel: DitherKernel) -> npt.NDArray[
         flat = ys * width + xs
 
         old = work[flat]
-        chosen = match_palette(np.clip(old, 0, 255).astype(np.int64))
+        chosen = match_palette(np.clip(old, 0, 255).astype(np.int64), colors)
         new = PALETTE_ARRAY[chosen]
         out[flat] = chosen
         work[flat] = new
@@ -238,6 +244,7 @@ def _diffuse_loop(
     dxs: Any,
     weights: Any,
     serpentine: Any,
+    colors: Any,
     out: Any,
 ) -> None:
     """Sequential error diffusion with the official metric (compiled by numba)."""
@@ -257,7 +264,7 @@ def _diffuse_loop(
             luma = (red * 250 + green * 350 + blue * 400) / (255.0 * 1000)
             best = 0
             best_total = 1e30
-            for index in range(6):
+            for index in range(colors):
                 dr = red - pal_r[index]
                 dg = green - pal_g[index]
                 db = blue - pal_b[index]
@@ -287,7 +294,7 @@ _DIFFUSE: Final = _jit(_diffuse_loop) if NUMBA_AVAILABLE else None
 
 
 def _compiled(
-    rgb: npt.NDArray[np.uint8], kernel: DitherKernel, *, serpentine: bool
+    rgb: npt.NDArray[np.uint8], kernel: DitherKernel, *, serpentine: bool, colors: int = 6
 ) -> npt.NDArray[np.uint8]:
     height, width = _check(rgb)
     work = np.ascontiguousarray(rgb, dtype=np.float32)
@@ -305,6 +312,7 @@ def _compiled(
         np.array([tap.dx for tap in kernel.taps], dtype=np.int64),
         np.array([tap.weight for tap in kernel.taps], dtype=np.float32),
         serpentine,
+        colors,
         out,
     )
     return out
@@ -332,12 +340,15 @@ def _corner_lut() -> npt.NDArray[np.uint8]:
     return np.asarray(match_palette(corners * 255), dtype=np.uint8)
 
 
-def _blue_noise(rgb: npt.NDArray[np.uint8]) -> npt.NDArray[np.uint8]:
+def _blue_noise(rgb: npt.NDArray[np.uint8], *, monochrome: bool = False) -> npt.NDArray[np.uint8]:
     height, width = _check(rgb)
     tile = blue_noise_thresholds()
     rows = np.arange(height) % tile.shape[0]
     cols = np.arange(width) % tile.shape[1]
     threshold = tile[rows[:, None], cols[None, :]]
+    if monochrome:
+        luma = rgb.astype(np.float32) @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
+        return np.asarray(luma > threshold, dtype=np.uint8)  # 1 = white, 0 = black
     bits = rgb > threshold[:, :, None]  # one shared mask: greys become black/white stipple
     code = bits[..., 0] * 4 + bits[..., 1] * 2 + bits[..., 2]
     return np.asarray(_corner_lut()[code], dtype=np.uint8)
@@ -352,7 +363,10 @@ def effective_algorithm(algorithm: ConcreteDither) -> ConcreteDither:
 
 
 def dither(
-    rgb: npt.NDArray[np.uint8], algorithm: DitherAlgorithm = "atkinson"
+    rgb: npt.NDArray[np.uint8],
+    algorithm: DitherAlgorithm = "atkinson",
+    *,
+    monochrome: bool = False,
 ) -> npt.NDArray[np.uint8]:
     """Quantize an RGB image to Spectra 6 palette indices.
 
@@ -360,9 +374,10 @@ def dither(
         rgb: ``(H, W, 3)`` ``uint8`` image.
         algorithm: A concrete algorithm (see the module docstring); ``"auto"`` must be
             resolved by the caller (:mod:`app.processor.auto`).
+        monochrome: Quantize onto black and white only (indices 0 and 1).
 
     Returns:
-        ``(H, W)`` ``uint8`` array of palette indices in ``0..5``.
+        ``(H, W)`` ``uint8`` array of palette indices in ``0..5`` (``0..1`` if monochrome).
     """
     _check(rgb)
     if algorithm == "auto":
@@ -370,13 +385,14 @@ def dither(
     name = effective_algorithm(algorithm)
     if name != algorithm:
         logger.warning("numba is unavailable: using %s instead of %s", name, algorithm)
+    colors = 2 if monochrome else 6
     if name == "blue-noise":
-        return _blue_noise(rgb)
+        return _blue_noise(rgb, monochrome=monochrome)
     if name == "fs-serpentine":
-        return _compiled(rgb, FLOYD_STEINBERG, serpentine=True)
+        return _compiled(rgb, FLOYD_STEINBERG, serpentine=True, colors=colors)
     if name == "stucki" and NUMBA_AVAILABLE:
-        return _compiled(rgb, STUCKI, serpentine=False)
-    return _wavefront(rgb, KERNELS[name])
+        return _compiled(rgb, STUCKI, serpentine=False, colors=colors)
+    return _wavefront(rgb, KERNELS[name], colors)
 
 
 def dither_image(

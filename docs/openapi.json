@@ -2865,6 +2865,7 @@
               "photo",
               "soft",
               "vivid",
+              "bw",
               "natural"
             ],
             "title": "Profile",
@@ -3076,6 +3077,7 @@
               "photo",
               "soft",
               "vivid",
+              "bw",
               "natural"
             ],
             "title": "Profile",

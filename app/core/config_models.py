@@ -49,8 +49,8 @@ ConcreteDither = Literal[
     "stucki",
     "blue-noise",
 ]
-EinkProfile = Literal["auto", "official", "photo", "soft", "vivid", "natural"]
-ConcreteProfile = Literal["official", "photo", "soft", "vivid", "natural"]
+EinkProfile = Literal["auto", "official", "photo", "soft", "vivid", "bw", "natural"]
+ConcreteProfile = Literal["official", "photo", "soft", "vivid", "bw", "natural"]
 PowerMode = Literal["continuous", "deepsleep"]
 
 
@@ -386,7 +386,7 @@ class DisplayConfig(_Section):
     )
 
 
-#: ``photo``, ``soft``, ``vivid`` and ``natural`` do their tone and chroma work in
+#: ``photo``, ``soft``, ``vivid``, ``bw`` and ``natural`` do their tone and chroma work in
 #: :func:`app.processor.enhance.enhance` (gamut-safe curves), so the plain factors stay neutral.
 #: The official edge-enhance/sharpen chain and +20% saturation/contrast make photos look
 #: outlined and grainy, while the old desaturating ``photo`` preset (saturation 0.85) left
@@ -403,6 +403,7 @@ PROFILE_VALUES: Final[dict[str, dict[str, float | bool]]] = {
     "photo": CURVE_PROFILE,
     "soft": CURVE_PROFILE,
     "vivid": CURVE_PROFILE,
+    "bw": CURVE_PROFILE,
     "natural": CURVE_PROFILE,
 }
 
@@ -415,7 +416,8 @@ class EinkConfig(_Section):
         description="auto = chosen per image from its content (photo, poster, album cover, "
         "title card) and cheap statistics; official = the values below (defaults = official "
         "converter); photo / soft / vivid = gamut-safe tone and chroma curves (balanced "
-        "photographs / lifted shadows / richer colors); natural = no enhancement. "
+        "photographs / lifted shadows / richer colors); bw = black-and-white photos (tone "
+        "curve plus black/white-only dithering, no colored dots); natural = no enhancement. "
         "Everything but official overrides brightness, contrast, saturation, sharpness and "
         "edge_filters",
     )
