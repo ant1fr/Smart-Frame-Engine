@@ -294,7 +294,7 @@ def test_photo_profile_reaches_the_render_options_and_changes_the_output() -> No
     official = RenderOptions.from_config(config())
     photo = RenderOptions.from_config(config(eink={"profile": "photo"}))
     assert official.eink.edge_filters is True and official.eink.saturation == 1.2
-    assert photo.eink.edge_filters is False and photo.eink.saturation == 0.85
+    assert photo.eink.edge_filters is False and photo.eink.saturation == 1.0
 
     rng = np.random.default_rng(41)
     image = Image.fromarray(rng.integers(0, 256, (900, 1600, 3), dtype=np.uint8))

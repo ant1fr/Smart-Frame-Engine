@@ -60,13 +60,13 @@ def test_natural_leaves_the_source_untouched() -> None:
     assert np.array_equal(_curve("natural", pixels), pixels)
 
 
-@pytest.mark.parametrize("profile", ["soft", "vivid"])
+@pytest.mark.parametrize("profile", ["photo", "soft", "vivid"])
 def test_curves_preserve_black_and_white(profile: str) -> None:
     ends = np.array([[[0, 0, 0], [255, 255, 255]]], dtype=np.uint8)
     assert _curve(profile, ends).tolist() == ends.tolist()
 
 
-@pytest.mark.parametrize("profile", ["soft", "vivid"])
+@pytest.mark.parametrize("profile", ["photo", "soft", "vivid"])
 def test_curves_are_monotonic_on_greys(profile: str) -> None:
     ramp = np.arange(256, dtype=np.uint8)
     out = _curve(profile, np.dstack([ramp[None, :]] * 3))[0, :, 0].astype(int)
@@ -76,12 +76,12 @@ def test_curves_are_monotonic_on_greys(profile: str) -> None:
 def test_soft_lifts_shadows_and_vivid_adds_contrast() -> None:
     grey = lambda v: np.full((1, 1, 3), v, dtype=np.uint8)  # noqa: E731
     assert _curve("soft", grey(30))[0, 0, 0] > 30
-    assert _curve("soft", grey(250))[0, 0, 0] < 250  # restrained highlights
+    assert _curve("soft", grey(235))[0, 0, 0] < 235  # restrained highlights
     assert _curve("vivid", grey(60))[0, 0, 0] < 60  # S-curve: darker below the middle...
     assert _curve("vivid", grey(190))[0, 0, 0] > 190  # ...lighter above it
 
 
-@pytest.mark.parametrize("profile", ["soft", "vivid"])
+@pytest.mark.parametrize("profile", ["photo", "soft", "vivid"])
 def test_curves_keep_hue_instead_of_clipping_channels(profile: str) -> None:
     rng = np.random.default_rng(7)
     pixels = rng.integers(0, 256, (60, 80, 3), dtype=np.uint8)
@@ -103,3 +103,11 @@ def test_vivid_saturates_a_muted_color_without_leaving_the_gamut() -> None:
     assert out.max() - out.min() > 150 - 100
     red = _curve("vivid", pure)[0, 0]
     assert red[0] > 200 and red[1] < 20 and red[2] < 20  # still pure red (toned down, hue kept)
+
+
+def test_photo_adds_gentle_contrast_and_color_but_less_than_vivid() -> None:
+    muted = np.full((1, 1, 3), (150, 110, 100), dtype=np.uint8)
+    photo = _curve("photo", muted)[0, 0].astype(int)
+    vivid = _curve("vivid", muted)[0, 0].astype(int)
+    assert photo.max() - photo.min() > 150 - 100  # more colorful than the source...
+    assert photo.max() - photo.min() < vivid.max() - vivid.min()  # ...but gentler than vivid

@@ -15,7 +15,8 @@ Profile (tone and chroma curve)::
     photo, dark ........................... soft      (lifted shadows)
     photo, bright (snow, beach, fog) ...... vivid     (keeps the bright whites)
     photo, low contrast ................... soft
-    other photos .......................... photo     (the profile tuned on a real panel)
+    other photos .......................... photo     (balanced curve: gentle contrast, a bit
+                                                      more color; tuned on a real panel)
 
 "Graphic" depends on what the image is: title cards always; album covers with very few
 colors or large flat areas; posters with very few colors. A photo is never graphic: a night
@@ -61,8 +62,8 @@ GRAPHIC_MAX_COLORS: Final = 12
 GRAPHIC_FLAT_SHARE: Final = 45.0
 GRAPHIC_POSTER_MAX_COLORS: Final = 24
 #: Dark photos (mean luma) and flat-lit ones (luma standard deviation).
-DARK_LUMA_MEAN: Final = 85.0
-LOW_CONTRAST_STD: Final = 38.0
+DARK_LUMA_MEAN: Final = 60.0
+LOW_CONTRAST_STD: Final = 30.0
 #: Bright photos (snow, beach, fog): a high mean and almost no black. They keep their whites
 #: with ``vivid`` instead of turning grey.
 HIGH_KEY_LUMA_MEAN: Final = 150.0
