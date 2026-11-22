@@ -17,7 +17,7 @@ every authentication mode), so it works before any key or password is configured
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "api_version": 1,
   "min_api_version": 1,
   "instance_id": "3f2b8c1e-5d0a-4c7e-9b61-0a1d2e3f4a5b",
@@ -222,7 +222,7 @@ changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
 
 ## Contract Changelog
 
-### Unreleased, additive
+### 1.3 (engine 1.1.0), additive
 
 - `eink.profile` (config, playground variants) and the `profile` of an image's render decision
   accept a new value `bw`: black-and-white photos get a grey tone curve and are dithered with
