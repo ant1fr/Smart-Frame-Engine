@@ -27,7 +27,8 @@ for you, prepares them so they look their best on those six colors, and sends th
 - 🎬 **Movie and TV posters** in HD (from TMDB) when you start a film, shown whole, never cropped.
 - 🎵 **Album covers** for the music that is playing, with the artist and album underneath.
 - 🧠 **A smarter eInk pipeline**: it chooses the right color profile and dithering per picture, so
-  skin tones, skies and album art all look right.
+  skin tones, skies and album art all look right. Black-and-white photos get their own profile
+  (true greys, black and white dots only) instead of a muddy mix of colored dots.
 - 🏠 **Home Assistant friendly**: show the right thing when you press play, when guests arrive, or
   when it rains. Or ignore Home Assistant entirely: it also works on its own, on a timer.
 - 🔒 **Yours alone**: self-hosted, no cloud, optional password. Private albums and the Immich

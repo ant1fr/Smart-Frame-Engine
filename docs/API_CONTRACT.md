@@ -17,7 +17,7 @@ every authentication mode), so it works before any key or password is configured
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "api_version": 1,
   "min_api_version": 1,
   "instance_id": "3f2b8c1e-5d0a-4c7e-9b61-0a1d2e3f4a5b",
@@ -221,6 +221,13 @@ capability list, `API_VERSION` or the Zeroconf record must update this file (inc
 changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
 
 ## Contract Changelog
+
+### 1.3 (engine 1.1.0), additive
+
+- `eink.profile` (config, playground variants) and the `profile` of an image's render decision
+  accept a new value `bw`: black-and-white photos get a grey tone curve and are dithered with
+  black and white only (no colored dots). `auto` picks it for photos without color. Clients that
+  switch on the known values must tolerate it. No `api_version` change.
 
 ### 1.2 (engine 1.0.0), additive
 

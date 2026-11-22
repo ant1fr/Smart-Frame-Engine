@@ -51,12 +51,14 @@ _GREEN: Final = PALETTE_ARRAY[:, 1]
 _BLUE: Final = PALETTE_ARRAY[:, 2]
 
 
-def match_palette(rgb: npt.NDArray[np.int64]) -> npt.NDArray[np.intp]:
+def match_palette(rgb: npt.NDArray[np.int64], colors: int = 6) -> npt.NDArray[np.intp]:
     """Return the closest palette index for each RGB triple.
 
     Args:
         rgb: ``(N, 3)`` integer array with channel values in ``0..255`` (the official
             converter clips and truncates the error-diffused value before matching).
+        colors: Only the first ``colors`` palette entries are candidates; ``2`` restricts
+            the match to black and white (monochrome rendering).
 
     Returns:
         ``(N,)`` array of palette indices in ``0..5``.
@@ -66,16 +68,16 @@ def match_palette(rgb: npt.NDArray[np.int64]) -> npt.NDArray[np.intp]:
     blue = rgb[:, 2:3]
     luma = (red * 250 + green * 350 + blue * 400) / (255.0 * 1000)
 
-    diff_r = red - _RED
-    diff_g = green - _GREEN
-    diff_b = blue - _BLUE
+    diff_r = red - _RED[:colors]
+    diff_g = green - _GREEN[:colors]
+    diff_b = blue - _BLUE[:colors]
     # Blue boosted, green and red reduced: compensates eye sensitivity and panel response.
     rgb_dist = (
         (diff_r * diff_r * 0.250 + diff_g * diff_g * 0.350 + diff_b * diff_b * 0.400)
         * 0.75
         / (255.0 * 255.0)
     )
-    luma_diff = luma - PALETTE_LUMA
+    luma_diff = luma - PALETTE_LUMA[:colors]
     total = 1.5 * rgb_dist + 0.60 * (luma_diff * luma_diff)
     return np.asarray(np.argmin(total, axis=1), dtype=np.intp)
 

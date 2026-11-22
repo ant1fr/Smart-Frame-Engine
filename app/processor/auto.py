@@ -12,10 +12,12 @@ Profile (tone and chroma curve)::
     album cover (photographic) ............ soft      (lifted shadows, restrained highlights)
     poster, contrasty / bright highlights . photo     (deep blacks, rich colors, no burnt skin)
     poster, flat or muted ................. vivid     (richer colors)
+    photo, black and white ................ bw        (grey tones; black/white-only dithering)
     photo, dark ........................... soft      (lifted shadows)
     photo, bright (snow, beach, fog) ...... vivid     (keeps the bright whites)
     photo, low contrast ................... soft
-    other photos .......................... photo     (the profile tuned on a real panel)
+    other photos .......................... photo     (balanced curve: gentle contrast, a bit
+                                                      more color; tuned on a real panel)
 
 "Graphic" depends on what the image is: title cards always; album covers with very few
 colors or large flat areas; posters with very few colors. A photo is never graphic: a night
@@ -61,8 +63,8 @@ GRAPHIC_MAX_COLORS: Final = 12
 GRAPHIC_FLAT_SHARE: Final = 45.0
 GRAPHIC_POSTER_MAX_COLORS: Final = 24
 #: Dark photos (mean luma) and flat-lit ones (luma standard deviation).
-DARK_LUMA_MEAN: Final = 85.0
-LOW_CONTRAST_STD: Final = 38.0
+DARK_LUMA_MEAN: Final = 60.0
+LOW_CONTRAST_STD: Final = 30.0
 #: Bright photos (snow, beach, fog): a high mean and almost no black. They keep their whites
 #: with ``vivid`` instead of turning grey.
 HIGH_KEY_LUMA_MEAN: Final = 150.0
@@ -73,6 +75,9 @@ HIGHLIGHT_LUMA: Final = 235.0
 BLACK_LUMA: Final = 20.0
 POSTER_HIGHLIGHT_SHARE: Final = 3.0
 POSTER_HIGH_CONTRAST_STD: Final = 60.0
+#: Photos with a Hasler-Susstrunk colorfulness below this are black and white (measured: B&W
+#: scans and conversions 0-2, colour photos 40+; sepia and toned prints stay well above).
+MONO_COLORFULNESS: Final = 8.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +92,7 @@ class ContentStats:
     detail: float  # mean absolute luma gradient (0..255): high = textured
     smooth_share: float  # share (0..1) of 8x8 blocks that are nearly flat
     black_share: float = 0.0  # % of pixels with luma <= BLACK_LUMA
+    colorfulness: float = 50.0  # Hasler-Susstrunk: ~0 for black and white, 40+ for colour
 
     def is_graphic(self, context: ContentContext) -> bool:
         """A drawing rather than a photograph (logo, illustration, typographic cover).
@@ -111,6 +117,10 @@ class ContentStats:
             and not self.is_graphic(context)
             and self.smooth_share >= SMOOTH_PHOTO_SHARE
         )
+
+    def is_monochrome(self, context: ContentContext) -> bool:
+        """A black-and-white photograph (no color to speak of)."""
+        return context == "photo" and self.colorfulness < MONO_COLORFULNESS
 
     @property
     def high_key(self) -> bool:
@@ -164,6 +174,7 @@ def measure_content(image: Image.Image) -> ContentStats:
         luma_std=base.luma_std,
         highlight_share=float((luma >= HIGHLIGHT_LUMA).mean() * 100),
         black_share=float((luma <= BLACK_LUMA).mean() * 100),
+        colorfulness=base.colorfulness,
         flat_share=base.flat_share,
         dominant_colors=int(np.searchsorted(covered, 0.9) + 1),
         detail=detail,
@@ -193,6 +204,11 @@ def decide_profile(
                 f"contrast {stats.luma_std:.0f}): deep blacks, rich colors, natural skin"
             )
         return "vivid", f"flat or muted poster (contrast {stats.luma_std:.0f}): richer colors"
+    if stats.is_monochrome(context):
+        return "bw", (
+            f"black and white photo (colorfulness {stats.colorfulness:.1f}): grey tones, "
+            "black and white dots only"
+        )
     if stats.luma_mean < DARK_LUMA_MEAN:
         return "soft", f"dark photo (mean luma {stats.luma_mean:.0f}): lift shadows"
     if stats.high_key:

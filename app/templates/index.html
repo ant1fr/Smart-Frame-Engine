@@ -1068,7 +1068,7 @@
 <script>
   function app() {
     // All URLs are relative ("./api/..."): the UI may live under a reverse-proxy sub-path.
-    var PROFILE_LABELS = { auto: "auto (per image)", official: "official (converter values)", photo: "photo (soft, natural)", soft: "soft (lifted shadows)", vivid: "vivid (rich colors)", natural: "natural (no enhancement)" };
+    var PROFILE_LABELS = { auto: "auto (per image)", official: "official (converter values)", photo: "photo (balanced colors)", soft: "soft (lifted shadows)", vivid: "vivid (rich colors)", bw: "bw (black and white photos)", natural: "natural (no enhancement)" };
     var DITHER_LABELS = { auto: "auto (per image)", atkinson: "atkinson (official)", "atkinson-classic": "atkinson-classic", fs: "Floyd-Steinberg", "fs-serpentine": "Floyd-Steinberg serpentine", stucki: "Stucki (smooth gradients)", "blue-noise": "blue noise (fast)" };
 
     return {
@@ -1077,7 +1077,7 @@
         { id: "frame", label: "Frame & schedule" }, { id: "immich", label: "Immich" }, { id: "tmdb", label: "TMDB" },
         { id: "family", label: "Family Mode" }, { id: "mix", label: "Smart Mix" }, { id: "image", label: "Image processing" }, { id: "security", label: "Security" }
       ],
-      profiles: ["auto", "official", "photo", "soft", "vivid", "natural"],
+      profiles: ["auto", "official", "photo", "soft", "vivid", "bw", "natural"],
       dithers: ["auto", "atkinson", "atkinson-classic", "fs", "fs-serpentine", "stucki", "blue-noise"],
       tab: "dashboard", section: "frame", dark: document.documentElement.classList.contains("dark"),
       session: null, status: null, activity: { renders: [], logs: [] }, logLevel: "INFO",
