@@ -222,6 +222,13 @@ changelog) and run `python scripts/export_openapi.py` (see `CLAUDE.md`).
 
 ## Contract Changelog
 
+### Unreleased, additive
+
+- `eink.profile` (config, playground variants) and the `profile` of an image's render decision
+  accept a new value `bw`: black-and-white photos get a grey tone curve and are dithered with
+  black and white only (no colored dots). `auto` picks it for photos without color. Clients that
+  switch on the known values must tolerate it. No `api_version` change.
+
 ### 1.2 (engine 1.0.0), additive
 
 - `GET /api/status` gains `release`: the engine version spelled like the git tag and the Docker

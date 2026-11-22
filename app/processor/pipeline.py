@@ -39,7 +39,7 @@ from app.processor.auto import (
     resolve,
 )
 from app.processor.dither import dither
-from app.processor.enhance import enhance
+from app.processor.enhance import enhance, mono_dither_input
 from app.processor.fit import (
     BackgroundStyle,
     FocusRegion,
@@ -229,7 +229,10 @@ def finalize(
     native_rgb = np.ascontiguousarray(
         np.rot90(np.asarray(composed, dtype=np.uint8), k=quarter_turns)
     )
-    portrait = dither(native_rgb, options.eink.dither)
+    monochrome = options.eink.profile == "bw"
+    if monochrome:
+        native_rgb = mono_dither_input(native_rgb)
+    portrait = dither(native_rgb, options.eink.dither, monochrome=monochrome)
     # The preview indices stay in viewing orientation (a lossless inverse rotation).
     indices = np.ascontiguousarray(np.rot90(portrait, k=-quarter_turns))
     return RenderResult(
